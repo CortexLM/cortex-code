@@ -6,6 +6,19 @@ use crate::agent_cmd::cli::ShowArgs;
 use crate::agent_cmd::loader::load_all_agents;
 use crate::agent_cmd::utils::format_color_preview;
 
+fn truncate_utf8_for_preview(input: &str, max_bytes: usize) -> (&str, bool) {
+    if input.len() <= max_bytes {
+        return (input, false);
+    }
+
+    let mut end = max_bytes;
+    while end > 0 && !input.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    (&input[..end], true)
+}
+
 /// Show agent details command.
 pub async fn run_show(args: ShowArgs) -> Result<()> {
     let agents = load_all_agents()?;
@@ -136,11 +149,12 @@ pub async fn run_show(args: ShowArgs) -> Result<()> {
     if let Some(ref prompt) = agent.prompt {
         println!("\nSystem Prompt:");
         println!("{}", "-".repeat(40));
-        let preview = if prompt.len() > 500 {
+        let (prompt_preview, was_truncated) = truncate_utf8_for_preview(prompt, 500);
+        let preview = if was_truncated {
             format!(
                 "{}...\n\n(truncated, {} chars total)",
-                &prompt[..500],
-                prompt.len()
+                prompt_preview,
+                prompt.chars().count()
             )
         } else {
             prompt.clone()
@@ -152,4 +166,28 @@ pub async fn run_show(args: ShowArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_utf8_for_preview;
+
+    #[test]
+    fn test_truncate_utf8_for_preview_ascii() {
+        let input = "a".repeat(600);
+        let (preview, truncated) = truncate_utf8_for_preview(&input, 500);
+
+        assert!(truncated);
+        assert_eq!(preview.len(), 500);
+    }
+
+    #[test]
+    fn test_truncate_utf8_for_preview_multibyte_boundary_safe() {
+        let input = "😀".repeat(130);
+        let (preview, truncated) = truncate_utf8_for_preview(&input, 500);
+
+        assert!(truncated);
+        assert!(preview.len() <= 500);
+        assert!(preview.is_char_boundary(preview.len()));
+    }
 }
