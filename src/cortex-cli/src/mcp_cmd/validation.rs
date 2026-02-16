@@ -283,6 +283,11 @@ pub(crate) fn validate_command_args(args: &[String]) -> Result<()> {
         if arg.contains('\0') {
             bail!("Command argument {} contains null bytes", i + 1);
         }
+        // Disallow control characters that would break TOML serialization
+        // (for example newline or carriage return in args list).
+        if arg.chars().any(|c| c.is_control() && c != '\t') {
+            bail!("Command argument {} contains control characters", i + 1);
+        }
     }
     Ok(())
 }
@@ -882,6 +887,32 @@ mod tests {
         let result = validate_command_args(&args);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("null bytes"));
+    }
+
+    #[test]
+    fn test_validate_command_args_newline_rejected() {
+        let args = vec!["printf".to_string(), "hello\nworld".to_string()];
+        let result = validate_command_args(&args);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("control characters")
+        );
+    }
+
+    #[test]
+    fn test_validate_command_args_carriage_return_rejected() {
+        let args = vec!["printf".to_string(), "hello\rworld".to_string()];
+        let result = validate_command_args(&args);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("control characters")
+        );
     }
 
     #[test]
