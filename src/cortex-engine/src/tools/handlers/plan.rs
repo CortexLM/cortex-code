@@ -225,6 +225,21 @@ impl ToolHandler for PlanHandler {
             }
         }
 
+        // Use cases section
+        if let Some(ref use_cases) = args.use_cases
+            && !use_cases.is_empty()
+        {
+            output.push_str("## Use Cases\n\n");
+            for use_case in use_cases {
+                if let Some(use_case_str) = use_case.as_str() {
+                    output.push_str(&format!("- {}\n", use_case_str));
+                } else {
+                    output.push_str(&format!("- {}\n", use_case));
+                }
+            }
+            output.push('\n');
+        }
+
         // Tasks section
         output.push_str("## Tasks\n\n");
         for task in &tasks {
@@ -365,5 +380,80 @@ impl ToolHandler for PlanHandler {
             files_modified: vec![],
             data: Some(plan_data),
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    #[tokio::test]
+    async fn test_plan_includes_use_cases_section_when_present() {
+        let handler = PlanHandler::new();
+        let context = ToolContext::new(PathBuf::from("."));
+
+        let args = json!({
+            "title": "Auth Improvements",
+            "description": "Plan to improve auth flows",
+            "architecture": "Layered service architecture",
+            "tasks": [{
+                "id": "T1",
+                "title": "Update auth middleware"
+            }],
+            "use_cases": [
+                "User can log in",
+                "User can log out"
+            ],
+            "agent_analyses": [{
+                "agent": "security",
+                "role": "Security Engineer",
+                "findings": ["Current token validation is weak"],
+                "recommendations": ["Enforce stronger token checks"]
+            }]
+        });
+
+        let result = handler.execute(args, &context).await;
+        assert!(result.is_ok());
+
+        let tool_result = result.unwrap();
+        assert!(tool_result.success);
+        assert!(tool_result.output.contains("## Use Cases"));
+        assert!(tool_result.output.contains("- User can log in"));
+        assert!(tool_result.output.contains("- User can log out"));
+
+        let metadata = tool_result.metadata.unwrap();
+        let data = metadata.data.unwrap();
+        assert!(data["use_cases"].is_array());
+        assert_eq!(data["use_cases"].as_array().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_plan_omits_use_cases_section_when_absent() {
+        let handler = PlanHandler::new();
+        let context = ToolContext::new(PathBuf::from("."));
+
+        let args = json!({
+            "title": "Auth Improvements",
+            "description": "Plan to improve auth flows",
+            "tasks": [{
+                "id": "T1",
+                "title": "Update auth middleware"
+            }],
+            "agent_analyses": [{
+                "agent": "security",
+                "role": "Security Engineer",
+                "findings": ["Current token validation is weak"],
+                "recommendations": ["Enforce stronger token checks"]
+            }]
+        });
+
+        let result = handler.execute(args, &context).await;
+        assert!(result.is_ok());
+
+        let tool_result = result.unwrap();
+        assert!(tool_result.success);
+        assert!(!tool_result.output.contains("## Use Cases"));
     }
 }
