@@ -206,11 +206,17 @@ pub async fn run_logout(config_overrides: CliConfigOverrides, skip_confirmation:
                 let _ = std::io::Write::flush(&mut std::io::stderr());
 
                 let mut input = String::new();
-                if std::io::stdin().read_line(&mut input).is_ok() {
-                    let input = input.trim().to_lowercase();
-                    if input != "y" && input != "yes" {
+                match std::io::stdin().read_line(&mut input) {
+                    Ok(_) => {
+                        if !is_logout_confirmation_accepted(&input) {
+                            print_info("Logout cancelled.");
+                            std::process::exit(0);
+                        }
+                    }
+                    Err(e) => {
+                        print_error(&format!("Failed to read logout confirmation: {e}"));
                         print_info("Logout cancelled.");
-                        std::process::exit(0);
+                        std::process::exit(1);
                     }
                 }
             }
@@ -271,4 +277,30 @@ pub fn read_api_key_from_stdin() -> String {
     }
 
     api_key
+}
+
+fn is_logout_confirmation_accepted(input: &str) -> bool {
+    let normalized = input.trim().to_lowercase();
+    normalized == "y" || normalized == "yes"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_logout_confirmation_accepted;
+
+    #[test]
+    fn test_logout_confirmation_accepts_y_and_yes() {
+        assert!(is_logout_confirmation_accepted("y"));
+        assert!(is_logout_confirmation_accepted("yes"));
+        assert!(is_logout_confirmation_accepted(" Y "));
+        assert!(is_logout_confirmation_accepted("Yes\n"));
+    }
+
+    #[test]
+    fn test_logout_confirmation_rejects_non_yes_inputs() {
+        assert!(!is_logout_confirmation_accepted(""));
+        assert!(!is_logout_confirmation_accepted("n"));
+        assert!(!is_logout_confirmation_accepted("no"));
+        assert!(!is_logout_confirmation_accepted("confirm"));
+    }
 }
