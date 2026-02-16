@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use std::io::{self, BufRead, Write};
 
 use crate::agent_cmd::cli::EditArgs;
-use crate::agent_cmd::loader::{load_all_agents, parse_frontmatter};
+use crate::agent_cmd::loader::{load_all_agents, parse_frontmatter, read_file_with_encoding};
 
 /// Edit agent command.
 ///
@@ -47,8 +47,8 @@ pub async fn run_edit(args: EditArgs) -> Result<()> {
             }
         });
 
-    // Make a backup of the original file
-    let backup_content = std::fs::read_to_string(path)
+    // Make a byte-for-byte backup of the original file so rollback preserves encoding.
+    let backup_content = std::fs::read(path)
         .with_context(|| format!("Failed to read agent file: {}", path.display()))?;
 
     loop {
@@ -64,7 +64,7 @@ pub async fn run_edit(args: EditArgs) -> Result<()> {
         }
 
         // Read and validate the edited file
-        let content = std::fs::read_to_string(path)
+        let content = read_file_with_encoding(path)
             .with_context(|| format!("Failed to read edited file: {}", path.display()))?;
 
         // Try to parse the frontmatter to validate
@@ -118,5 +118,31 @@ pub async fn run_edit(args: EditArgs) -> Result<()> {
                 continue;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn utf16le_with_bom(input: &str) -> Vec<u8> {
+        let mut bytes = vec![0xFF, 0xFE];
+        for unit in input.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        bytes
+    }
+
+    #[test]
+    fn test_read_file_with_encoding_supports_utf16_for_edit_flow() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let file_path = temp_dir.path().join("agent.md");
+
+        let content = "---\nname: utf16\nmode: primary\n---\nPrompt";
+        std::fs::write(&file_path, utf16le_with_bom(content)).expect("write utf16 file");
+
+        let read = read_file_with_encoding(Path::new(&file_path)).expect("read with encoding");
+        assert_eq!(read, content);
     }
 }
