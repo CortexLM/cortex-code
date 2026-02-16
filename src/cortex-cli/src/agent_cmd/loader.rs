@@ -413,7 +413,10 @@ pub fn load_agent_from_json(path: &Path, source: AgentSource) -> Result<AgentInf
     let prompt = if let Some(parent) = path.parent() {
         let prompt_file = parent.join("prompt.md");
         if prompt_file.exists() {
-            Some(std::fs::read_to_string(&prompt_file)?)
+            Some(
+                read_file_with_encoding(&prompt_file)
+                    .with_context(|| format!("Failed to read {}", prompt_file.display()))?,
+            )
         } else {
             None
         }

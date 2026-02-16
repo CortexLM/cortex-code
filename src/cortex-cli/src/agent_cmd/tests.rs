@@ -4,9 +4,9 @@
 mod tests {
     use crate::agent_cmd::cli::{CopyArgs, ExportArgs};
     use crate::agent_cmd::loader::{
-        load_builtin_agents, parse_frontmatter, read_file_with_encoding,
+        load_agent_from_json, load_builtin_agents, parse_frontmatter, read_file_with_encoding,
     };
-    use crate::agent_cmd::types::AgentMode;
+    use crate::agent_cmd::types::{AgentMode, AgentSource};
 
     #[test]
     fn test_read_file_with_utf8() {
@@ -152,5 +152,39 @@ This is the system prompt.
         assert!(agents.iter().any(|a| a.name == "build"));
         assert!(agents.iter().any(|a| a.name == "plan"));
         assert!(agents.iter().any(|a| a.name == "explore"));
+    }
+
+    #[test]
+    fn test_load_agent_from_json_with_utf16_prompt_file() {
+        let temp_dir = std::env::temp_dir().join("cortex_utf16_prompt_agent_test");
+        let _ = std::fs::remove_dir_all(&temp_dir);
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        let agent_json = temp_dir.join("agent.json");
+        let prompt_md = temp_dir.join("prompt.md");
+
+        let json_content = r#"{
+  "name": "utfprompt",
+  "mode": "primary",
+  "description": "UTF prompt agent"
+}"#;
+        std::fs::write(&agent_json, json_content).unwrap();
+
+        // Write UTF-16 LE + BOM prompt file
+        let prompt_content = "Hello from UTF-16 prompt";
+        let mut bytes = vec![0xFF, 0xFE];
+        for ch in prompt_content.encode_utf16() {
+            bytes.extend_from_slice(&ch.to_le_bytes());
+        }
+        std::fs::write(&prompt_md, bytes).unwrap();
+
+        let result = load_agent_from_json(&agent_json, AgentSource::Personal);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+
+        assert!(result.is_ok());
+        let agent = result.unwrap();
+        assert_eq!(agent.name, "utfprompt");
+        assert_eq!(agent.prompt.as_deref(), Some(prompt_content));
     }
 }
