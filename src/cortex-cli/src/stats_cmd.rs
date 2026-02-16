@@ -323,7 +323,7 @@ fn infer_provider(model: &str) -> String {
     } else if model_lower.contains("grok") {
         "xai".to_string()
     } else if model_lower.contains("qwen") {
-        "deepseek".to_string() // Qwen models often available via DeepSeek
+        "alibaba".to_string()
     } else {
         "unknown".to_string()
     }
@@ -722,6 +722,7 @@ mod tests {
         assert_eq!(infer_provider("gpt-4o"), "openai");
         assert_eq!(infer_provider("gemini-2.0-flash"), "google");
         assert_eq!(infer_provider("deepseek-chat"), "deepseek");
+        assert_eq!(infer_provider("qwen2.5-coder"), "alibaba");
     }
 
     #[test]
