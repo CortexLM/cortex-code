@@ -66,14 +66,18 @@ pub async fn proxy_to_port_path(
         builder = builder.header(header::CONTENT_TYPE, v);
     }
 
-    // Add CORS headers
+    // Add CORS headers - origin wildcard is acceptable since we only proxy to localhost
+    // Restrict allowed headers to prevent CSRF via custom header abuse
     builder = builder
         .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(
             header::ACCESS_CONTROL_ALLOW_METHODS,
             "GET, POST, PUT, DELETE, OPTIONS",
         )
-        .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*");
+        .header(
+            header::ACCESS_CONTROL_ALLOW_HEADERS,
+            "Content-Type, Authorization, Accept, X-Requested-With",
+        );
 
     builder
         .body(Body::from(body))
