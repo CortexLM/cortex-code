@@ -159,7 +159,9 @@ impl AuthService {
             .as_ref()
             .ok_or_else(|| AppError::Internal("JWT secret not configured".to_string()))?;
 
-        let validation = Validation::default();
+        let mut validation = Validation::default();
+        validation.set_issuer(&["Cortex"]);
+        validation.set_audience(&["cortex-api"]);
 
         let token_data = decode::<Claims>(token, decoding_key, &validation)
             .map_err(|e| AppError::Authentication(format!("Invalid token: {e}")))?;

@@ -11,7 +11,7 @@ mod files;
 mod git;
 mod health;
 mod models;
-mod path_security;
+pub(crate) mod path_security;
 mod proxy;
 mod search;
 mod sessions;

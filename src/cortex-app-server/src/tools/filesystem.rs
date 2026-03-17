@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+use crate::api::path_security::{validate_path_for_write, validate_path_safe};
+
 use super::types::ToolResult;
 
 /// Read file contents.
@@ -21,6 +23,12 @@ pub async fn read_file(cwd: &Path, args: Value) -> ToolResult {
         PathBuf::from(path)
     } else {
         cwd.join(path)
+    };
+
+    // Security: Prevent path traversal attacks
+    let full_path = match validate_path_safe(&full_path) {
+        Ok(p) => p,
+        Err(e) => return ToolResult::error(format!("Path validation failed: {e}")),
     };
 
     let offset = args
@@ -96,6 +104,12 @@ pub async fn write_file(cwd: &Path, args: Value) -> ToolResult {
         cwd.join(path)
     };
 
+    // Security: Prevent path traversal and writes to system directories
+    let full_path = match validate_path_for_write(&full_path) {
+        Ok(p) => p,
+        Err(e) => return ToolResult::error(format!("Path validation failed: {e}")),
+    };
+
     // Create parent directories if needed
     if let Some(parent) = full_path.parent()
         && let Err(e) = tokio::fs::create_dir_all(parent).await
@@ -152,6 +166,12 @@ pub async fn edit_file(cwd: &Path, args: Value) -> ToolResult {
         PathBuf::from(path)
     } else {
         cwd.join(path)
+    };
+
+    // Security: Prevent path traversal and writes to system directories
+    let full_path = match validate_path_for_write(&full_path) {
+        Ok(p) => p,
+        Err(e) => return ToolResult::error(format!("Path validation failed: {e}")),
     };
 
     let content = match tokio::fs::read_to_string(&full_path).await {
@@ -212,6 +232,12 @@ pub async fn list_dir(cwd: &Path, args: Value) -> ToolResult {
         PathBuf::from(path)
     } else {
         cwd.join(path)
+    };
+
+    // Security: Prevent path traversal attacks
+    let full_path = match validate_path_safe(&full_path) {
+        Ok(p) => p,
+        Err(e) => return ToolResult::error(format!("Path validation failed: {e}")),
     };
 
     let mut entries = match tokio::fs::read_dir(&full_path).await {

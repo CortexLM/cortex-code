@@ -98,18 +98,24 @@ pub async fn web_search(args: Value) -> ToolResult {
         None => return ToolResult::error("query is required"),
     };
 
-    // Simple URL encoding
+    // URL-encode query: percent-encode all bytes of multi-byte UTF-8 characters correctly
     let encoded: String = query
         .chars()
-        .map(|c| {
+        .flat_map(|c| {
             if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                c.to_string()
+                c.to_string().into_bytes()
             } else if c == ' ' {
-                "+".to_string()
+                b"+".to_vec()
             } else {
-                format!("%{:02X}", c as u8)
+                // Encode every byte of the UTF-8 representation
+                let mut buf = [0u8; 4];
+                let s = c.encode_utf8(&mut buf);
+                s.bytes()
+                    .flat_map(|b| format!("%{:02X}", b).into_bytes())
+                    .collect()
             }
         })
+        .map(|b| b as char)
         .collect();
 
     let url = format!("https://duckduckgo.com/html/?q={encoded}");
