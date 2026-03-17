@@ -5,13 +5,18 @@ use std::process::Command;
 
 use axum::{Json, extract::Query};
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
+use super::path_security::validate_path_safe;
 use super::types::{SearchMatch, SearchQuery, SearchResponse, SearchResult};
 
 /// Search the project using ripgrep.
 pub async fn search_project(Query(query): Query<SearchQuery>) -> AppResult<Json<SearchResponse>> {
     let path = Path::new(&query.path);
+
+    // Security: Prevent path traversal attacks
+    let path = validate_path_safe(path).map_err(AppError::BadRequest)?;
+
     if !path.exists() {
         return Ok(Json(SearchResponse { results: vec![] }));
     }

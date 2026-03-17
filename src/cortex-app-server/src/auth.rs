@@ -201,14 +201,11 @@ impl AuthService {
         self.config.api_keys.iter().any(|k| k == api_key)
     }
 
-    /// Hash an API key for storage.
+    /// Hash an API key for storage using SHA-256.
     pub fn hash_api_key(api_key: &str) -> String {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let mut hasher = DefaultHasher::new();
-        api_key.hash(&mut hasher);
-        format!("{:x}", hasher.finish())
+        use sha2::{Digest, Sha256};
+        let hash = Sha256::digest(api_key.as_bytes());
+        format!("{:x}", hash)
     }
 }
 

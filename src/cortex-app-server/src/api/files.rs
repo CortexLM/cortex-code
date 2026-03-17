@@ -10,7 +10,7 @@ use axum::{
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-use super::path_security::{validate_path_for_delete, validate_path_for_write};
+use super::path_security::{validate_path_for_delete, validate_path_for_write, validate_path_safe};
 use super::types::{
     CreateDirRequest, DeleteFileRequest, DeleteFileResponse, FileEntry, FileTreeNode,
     FileTreeQuery, ListFilesRequest, ListFilesResponse, ReadFileRequest, ReadFileResponse,
@@ -29,6 +29,9 @@ pub async fn list_files(Json(req): Json<ListFilesRequest>) -> AppResult<Json<Lis
 
     let path = std::path::Path::new(&req.path);
 
+    // Security: Prevent path traversal attacks
+    let path = validate_path_safe(path).map_err(AppError::BadRequest)?;
+
     if !path.exists() {
         return Err(AppError::NotFound(format!("Path not found: {}", req.path)));
     }
@@ -39,7 +42,7 @@ pub async fn list_files(Json(req): Json<ListFilesRequest>) -> AppResult<Json<Lis
 
     let mut entries = Vec::new();
 
-    let dir_entries = fs::read_dir(path)
+    let dir_entries = fs::read_dir(&path)
         .map_err(|e| AppError::Internal(format!("Failed to read directory: {e}")))?;
 
     for entry in dir_entries {
@@ -176,6 +179,9 @@ pub async fn get_file_tree(Query(query): Query<FileTreeQuery>) -> AppResult<Json
 
     let path = std::path::Path::new(&query.path);
 
+    // Security: Prevent path traversal attacks
+    let path = validate_path_safe(path).map_err(AppError::BadRequest)?;
+
     if !path.exists() {
         return Err(AppError::NotFound(format!(
             "Path not found: {}",
@@ -183,7 +189,7 @@ pub async fn get_file_tree(Query(query): Query<FileTreeQuery>) -> AppResult<Json
         )));
     }
 
-    let tree = build_tree(path, 0, max_depth)
+    let tree = build_tree(&path, 0, max_depth)
         .ok_or_else(|| AppError::Internal("Failed to build file tree".to_string()))?;
 
     Ok(Json(tree))
@@ -195,6 +201,9 @@ pub async fn read_file(Json(req): Json<ReadFileRequest>) -> AppResult<Json<ReadF
 
     let path = std::path::Path::new(&req.path);
 
+    // Security: Prevent path traversal attacks
+    let path = validate_path_safe(path).map_err(AppError::BadRequest)?;
+
     if !path.exists() {
         return Err(AppError::NotFound(format!("File not found: {}", req.path)));
     }
@@ -203,7 +212,7 @@ pub async fn read_file(Json(req): Json<ReadFileRequest>) -> AppResult<Json<ReadF
         return Err(AppError::BadRequest("Path is not a file".to_string()));
     }
 
-    let content = fs::read_to_string(path)
+    let content = fs::read_to_string(&path)
         .map_err(|e| AppError::Internal(format!("Failed to read file: {e}")))?;
 
     let size = path.metadata().map(|m| m.len()).unwrap_or(0);
@@ -279,7 +288,10 @@ pub async fn create_directory(
 
     let path = std::path::Path::new(&req.path);
 
-    fs::create_dir_all(path)
+    // Security: Prevent path traversal and creation of system directories
+    let path = validate_path_for_write(path).map_err(AppError::BadRequest)?;
+
+    fs::create_dir_all(&path)
         .map_err(|e| AppError::Internal(format!("Failed to create directory: {e}")))?;
 
     Ok(Json(DeleteFileResponse {
@@ -293,6 +305,11 @@ pub async fn rename_file(Json(req): Json<RenameRequest>) -> AppResult<Json<Delet
     use std::fs;
 
     let old_path = std::path::Path::new(&req.old_path);
+    let new_path = std::path::Path::new(&req.new_path);
+
+    // Security: Validate both source and destination to prevent path traversal
+    let old_path = validate_path_safe(old_path).map_err(AppError::BadRequest)?;
+    let new_path = validate_path_for_write(new_path).map_err(AppError::BadRequest)?;
 
     if !old_path.exists() {
         return Err(AppError::NotFound(format!(
@@ -301,7 +318,7 @@ pub async fn rename_file(Json(req): Json<RenameRequest>) -> AppResult<Json<Delet
         )));
     }
 
-    fs::rename(&req.old_path, &req.new_path)
+    fs::rename(&old_path, &new_path)
         .map_err(|e| AppError::Internal(format!("Failed to rename: {e}")))?;
 
     Ok(Json(DeleteFileResponse {

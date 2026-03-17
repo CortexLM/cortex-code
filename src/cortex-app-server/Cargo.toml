@@ -61,6 +61,7 @@ fs2 = "0.4"  # File locking for concurrent access
 
 # Authentication
 jsonwebtoken = "9"
+sha2 = { workspace = true }
 
 # File watching
 notify = "6"
