@@ -23,6 +23,7 @@ use ratatui::widgets::{
     Block, Borders, Clear, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget,
 };
 use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 // ============================================================
 // MODEL ITEM
@@ -347,8 +348,9 @@ impl ModelPicker<'_> {
 
         buf.set_string(x + 3, y, &display_query, query_style);
 
-        // Cursor
-        let cursor_x = x + 3 + self.state.search_query.len() as u16;
+        // Cursor — use display width (UnicodeWidthStr) not byte length,
+        // so CJK/emoji characters don't misalign the caret.
+        let cursor_x = x + 3 + UnicodeWidthStr::width(&self.state.search_query) as u16;
         if cursor_x < search_inner.right() {
             buf[(cursor_x, y)].set_bg(CYAN_PRIMARY);
         }
@@ -480,14 +482,19 @@ impl ModelPicker<'_> {
         let y = area.y;
         let x = area.x + 1;
 
-        // Legend
+        // Legend — occupies columns x..x+21 ("* current  " = 10, "+ popular" = 9)
         buf.set_string(x, y, "* current  ", Style::default().fg(GREEN));
         buf.set_string(x + 11, y, "+ popular", Style::default().fg(ORANGE));
 
-        // Help
+        // Help — guard against overlap with legend when terminal is narrow.
+        // Legend ends at legend_right = x + 21.  Require help_x > legend_right + 1 gap.
+        let legend_right = x + 21;
         let help = "[Enter] select  [Esc] cancel  [Ctrl+L] clear search";
         let help_x = area.right().saturating_sub(help.len() as u16 + 1);
-        buf.set_string(help_x, y, help, Style::default().fg(TEXT_MUTED));
+        if help_x > legend_right + 1 {
+            buf.set_string(help_x, y, help, Style::default().fg(TEXT_MUTED));
+        }
+        // When width is insufficient the legend renders alone — no garbled overlap.
     }
 }
 
