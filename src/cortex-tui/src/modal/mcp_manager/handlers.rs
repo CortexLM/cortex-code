@@ -141,6 +141,7 @@ impl McpManagerModal {
                             command: String::new(),
                             args: String::new(),
                             focus: AddStdioServerFocus::Name,
+                            error: None,
                         };
                     } else {
                         // HTTP transport
@@ -171,6 +172,7 @@ impl McpManagerModal {
             ref mut command,
             ref mut args,
             ref mut focus,
+            ref mut error,
         } = self.mode
         {
             match key.code {
@@ -180,6 +182,7 @@ impl McpManagerModal {
                         AddStdioServerFocus::Command => AddStdioServerFocus::Args,
                         AddStdioServerFocus::Args => AddStdioServerFocus::Name,
                     };
+                    *error = None; // Clear error on field switch
                     ModalResult::Continue
                 }
                 KeyCode::BackTab => {
@@ -200,6 +203,15 @@ impl McpManagerModal {
                             args: args_vec,
                         });
                     }
+                    // Set error message for empty required fields
+                    let err_msg = if name.is_empty() && command.is_empty() {
+                        "Error: Name and Command are required"
+                    } else if name.is_empty() {
+                        "Error: Server name is required"
+                    } else {
+                        "Error: Command is required"
+                    };
+                    *error = Some(err_msg.to_string());
                     ModalResult::Continue
                 }
                 KeyCode::Esc => {
@@ -211,6 +223,7 @@ impl McpManagerModal {
                     ModalResult::Continue
                 }
                 KeyCode::Char(c) => {
+                    *error = None; // Clear error when user starts typing
                     match focus {
                         AddStdioServerFocus::Name => name.push(c),
                         AddStdioServerFocus::Command => command.push(c),

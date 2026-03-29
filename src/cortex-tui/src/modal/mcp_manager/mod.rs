@@ -34,6 +34,7 @@ impl Modal for McpManagerModal {
                 command,
                 args,
                 focus,
+                error: _,
             } => {
                 match focus {
                     AddStdioServerFocus::Name => name.push_str(text),

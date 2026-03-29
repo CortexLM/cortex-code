@@ -302,12 +302,13 @@ impl McpManagerModal {
             ref command,
             ref args,
             focus,
+            ref error,
         } = self.mode
         {
             Clear.render(area, buf);
 
             let block = Block::default()
-                .title(" Add MCP Server ")
+                .title(" Add MCP Server - Stdio ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(CYAN_PRIMARY))
                 .style(Style::default().bg(SURFACE_1));
@@ -408,6 +409,12 @@ impl McpManagerModal {
                 .hint("Enter", "save")
                 .hint("Esc", "back");
             form_bar.render(chunks[4], buf);
+
+            // Render submission error message if present
+            if let Some(ref err_msg) = error {
+                let error_style = Style::default().fg(ERROR);
+                buf.set_string(chunks[4].x, chunks[4].y.saturating_sub(1), err_msg, error_style);
+            }
         }
     }
 

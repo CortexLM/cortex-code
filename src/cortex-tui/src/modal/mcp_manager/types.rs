@@ -112,6 +112,8 @@ pub enum McpMode {
         command: String,
         args: String,
         focus: AddStdioServerFocus,
+        /// Submission error message (e.g., when required fields are empty)
+        error: Option<String>,
     },
     /// Step 3b: Adding an HTTP server
     AddHttpServer {
