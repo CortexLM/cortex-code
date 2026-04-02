@@ -5,6 +5,7 @@ use crate::{Result, SessionStore, SessionSummary};
 /// Resume picker for selecting sessions to resume.
 pub struct ResumePicker {
     store: SessionStore,
+    all_sessions: Vec<SessionSummary>,
     sessions: Vec<SessionSummary>,
     selected_index: usize,
     filter: Option<String>,
@@ -14,6 +15,7 @@ impl ResumePicker {
     pub fn new(store: SessionStore) -> Self {
         Self {
             store,
+            all_sessions: Vec::new(),
             sessions: Vec::new(),
             selected_index: 0,
             filter: None,
@@ -22,7 +24,7 @@ impl ResumePicker {
 
     /// Load sessions.
     pub async fn load(&mut self, include_archived: bool) -> Result<()> {
-        self.sessions = self.store.list_sessions(include_archived).await?;
+        self.all_sessions = self.store.list_sessions(include_archived).await?;
         self.selected_index = 0;
         self.apply_filter();
         Ok(())
@@ -32,10 +34,13 @@ impl ResumePicker {
     pub fn set_filter(&mut self, filter: Option<String>) {
         self.filter = filter;
         self.apply_filter();
+        self.selected_index = 0;
     }
 
     /// Apply filter to sessions.
     fn apply_filter(&mut self) {
+        self.sessions = self.all_sessions.clone();
+
         if let Some(ref filter) = self.filter {
             let filter_lower = filter.to_lowercase();
             self.sessions.retain(|s| {
@@ -47,6 +52,8 @@ impl ResumePicker {
                         .unwrap_or(false)
             });
         }
+
+        self.selected_index = self.selected_index.min(self.sessions.len().saturating_sub(1));
     }
 
     /// Get filtered sessions.
@@ -167,6 +174,27 @@ fn truncate_string(s: &str, width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SessionMeta;
+    use tempfile::tempdir;
+
+    async fn create_picker_with_sessions() -> ResumePicker {
+        let dir = tempdir().unwrap();
+        let store = SessionStore::new(dir.path());
+        store.init().await.unwrap();
+
+        let session_cwd = std::env::temp_dir();
+        let alpha = SessionMeta::new("alpha-session", &session_cwd).with_title("Alpha Session");
+        let beta = SessionMeta::new("beta-session", &session_cwd).with_title("Beta Session");
+        let gamma = SessionMeta::new("gamma-session", &session_cwd).with_title("Gamma Session");
+
+        store.save_session(&alpha).await.unwrap();
+        store.save_session(&beta).await.unwrap();
+        store.save_session(&gamma).await.unwrap();
+
+        let mut picker = ResumePicker::new(store);
+        picker.load(false).await.unwrap();
+        picker
+    }
 
     #[test]
     fn test_format_relative_time() {
@@ -175,5 +203,43 @@ mod tests {
 
         let hour_ago = now - chrono::Duration::hours(2);
         assert_eq!(format_relative_time(&hour_ago), "2h ago");
+    }
+
+    #[tokio::test]
+    async fn test_clearing_filter_restores_all_sessions() {
+        let mut picker = create_picker_with_sessions().await;
+
+        assert_eq!(picker.len(), 3);
+
+        picker.set_filter(Some("alpha".to_string()));
+        assert_eq!(picker.len(), 1);
+        assert_eq!(picker.sessions()[0].id, "alpha-session");
+
+        picker.set_filter(None);
+        assert_eq!(picker.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_filter_resets_selected_index() {
+        let mut picker = create_picker_with_sessions().await;
+
+        picker.select(2);
+        assert_eq!(picker.selected_index(), 2);
+
+        picker.set_filter(Some("alpha".to_string()));
+        assert_eq!(picker.selected_index(), 0);
+        assert_eq!(picker.selected().map(|s| s.id.as_str()), Some("alpha-session"));
+    }
+
+    #[tokio::test]
+    async fn test_empty_filter_result_has_no_selection() {
+        let mut picker = create_picker_with_sessions().await;
+
+        picker.select(1);
+        picker.set_filter(Some("does-not-match".to_string()));
+
+        assert!(picker.is_empty());
+        assert_eq!(picker.selected_index(), 0);
+        assert!(picker.selected().is_none());
     }
 }
