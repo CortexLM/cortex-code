@@ -48,7 +48,7 @@ WORKSPACE_VERSION=$(grep -A20 '^\[workspace\.package\]' "$CARGO_TOML" | grep '^v
 echo "Workspace Cargo.toml:  $WORKSPACE_VERSION"
 
 # Also check cortex-cli/Cargo.toml uses workspace version
-CORTEX_CLI_CARGO="$REPO_ROOT/cortex-cli/Cargo.toml"
+CORTEX_CLI_CARGO="$REPO_ROOT/src/cortex-cli/Cargo.toml"
 if [ -f "$CORTEX_CLI_CARGO" ]; then
     CLI_VERSION_LINE=$(grep '^version' "$CORTEX_CLI_CARGO" | head -1)
     if [[ "$CLI_VERSION_LINE" == *"workspace = true"* ]]; then
