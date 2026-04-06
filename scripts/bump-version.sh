@@ -139,15 +139,36 @@ compare_versions() {
 }
 
 # Calculate new version
+# Check if current version is a prerelease (contains '-')
+IS_PRERELEASE=false
+if [[ "$CURRENT_VERSION" == *-* ]]; then
+    IS_PRERELEASE=true
+fi
+
 case $BUMP_TYPE in
     patch)
-        NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+        # If prerelease, just remove prerelease tag to get stable version
+        if [ "$IS_PRERELEASE" = true ]; then
+            NEW_VERSION="$BASE_VERSION"
+        else
+            NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+        fi
         ;;
     minor)
-        NEW_VERSION="$MAJOR.$((MINOR + 1)).0"
+        # If prerelease, just remove prerelease tag to get stable version
+        if [ "$IS_PRERELEASE" = true ]; then
+            NEW_VERSION="$BASE_VERSION"
+        else
+            NEW_VERSION="$MAJOR.$((MINOR + 1)).0"
+        fi
         ;;
     major)
-        NEW_VERSION="$((MAJOR + 1)).0.0"
+        # If prerelease, just remove prerelease tag to get stable version
+        if [ "$IS_PRERELEASE" = true ]; then
+            NEW_VERSION="$BASE_VERSION"
+        else
+            NEW_VERSION="$((MAJOR + 1)).0.0"
+        fi
         ;;
     *)
         # Assume it's an exact version - validate format
