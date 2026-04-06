@@ -28,10 +28,10 @@ pub fn get_styles() -> Styles {
 /// After-help section with environment variables documentation.
 pub const AFTER_HELP: &str = color_print::cstr!(
     r#"<cyan,bold>📚 QUICK START</>
+    <green,bold>cortex</> <cyan>"fix the bug"</>             Start interactive TUI with initial prompt
+    <green,bold>cortex run</> <cyan>"explain this"</>       Non-interactive single request
+    <green,bold>cortex exec</> <cyan>"run tests"</>        Headless execution for CI/CD
     <green,bold>cortex</>                         Start interactive TUI
-    <green,bold>cortex</> <dim>"fix the bug"</>          Start TUI with initial prompt
-    <green,bold>cortex run</> <dim>"explain this"</>     Non-interactive single request
-    <green,bold>cortex exec</> <dim>"run tests"</>       Headless execution for CI/CD
     <green,bold>cortex resume --last</>           Continue most recent session
 
 <cyan,bold>🌍 ENVIRONMENT VARIABLES</>
