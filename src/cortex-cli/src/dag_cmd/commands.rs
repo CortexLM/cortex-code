@@ -322,26 +322,39 @@ pub async fn run_list(args: DagListArgs) -> Result<()> {
         DagOutputFormat::Json => {
             let mut dags = Vec::new();
             for id in &ids {
-                if let Ok(dag) = store.load(id).await {
-                    let counts = dag.status_counts();
-                    dags.push(serde_json::json!({
-                        "id": id,
-                        "task_count": dag.len(),
-                        "is_complete": dag.is_complete(),
-                        "all_succeeded": dag.all_succeeded(),
-                        "completed": counts.get(&TaskStatus::Completed).unwrap_or(&0),
-                        "failed": counts.get(&TaskStatus::Failed).unwrap_or(&0)
-                    }));
+                match store.load(id).await {
+                    Ok(dag) => {
+                        let counts = dag.status_counts();
+                        dags.push(serde_json::json!({
+                            "id": id,
+                            "task_count": dag.len(),
+                            "is_complete": dag.is_complete(),
+                            "all_succeeded": dag.all_succeeded(),
+                            "completed": counts.get(&TaskStatus::Completed).unwrap_or(&0),
+                            "failed": counts.get(&TaskStatus::Failed).unwrap_or(&0)
+                        }));
+                    }
+                    Err(_) => {
+                        dags.push(serde_json::json!({
+                            "id": id,
+                            "error": "error loading"
+                        }));
+                    }
                 }
             }
             println!("{}", serde_json::to_string_pretty(&dags)?);
         }
         DagOutputFormat::Compact => {
             for id in &ids {
-                if let Ok(dag) = store.load(id).await {
-                    let counts = dag.status_counts();
-                    let completed = counts.get(&TaskStatus::Completed).unwrap_or(&0);
-                    println!("{} {}/{}", id, completed, dag.len());
+                match store.load(id).await {
+                    Ok(dag) => {
+                        let counts = dag.status_counts();
+                        let completed = counts.get(&TaskStatus::Completed).unwrap_or(&0);
+                        println!("{} {}/{}", id, completed, dag.len());
+                    }
+                    Err(_) => {
+                        println!("? {} (error loading)", id);
+                    }
                 }
             }
         }
