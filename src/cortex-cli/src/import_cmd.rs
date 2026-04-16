@@ -72,9 +72,9 @@ impl ImportCommand {
         // Parse the export with helpful error messages
         let export: SessionExport = serde_json::from_str(&json_content).map_err(|e| {
             // Create a helpful error message with content preview
-            let preview_len = json_content.len().min(200);
-            let content_preview = &json_content[..preview_len];
-            let truncated = if json_content.len() > 200 {
+            let content_preview: String = json_content.chars().take(200).collect();
+            let preview_len = content_preview.len();
+            let truncated = if json_content.chars().count() > 200 {
                 "..."
             } else {
                 ""
