@@ -452,10 +452,12 @@ fn get_git_remote_url() -> Result<String> {
 
 /// Parse a GitHub URL to extract owner and repo.
 fn parse_github_url(url: &str) -> Result<(String, String)> {
+    let url_lower = url.to_lowercase();
+    
     // Handle SSH URLs: git@github.com:owner/repo.git
-    if url.starts_with("git@github.com:") {
-        let path = url.trim_start_matches("git@github.com:");
-        let path = path.trim_end_matches(".git");
+    if url_lower.starts_with("git@github.com:") {
+        let path = &url[15..]; // Skip "git@github.com:" preserving case
+        let path = path.strip_suffix(".git").unwrap_or(path);
         let parts: Vec<&str> = path.split('/').collect();
         if parts.len() >= 2 {
             return Ok((parts[0].to_string(), parts[1].to_string()));
@@ -463,9 +465,10 @@ fn parse_github_url(url: &str) -> Result<(String, String)> {
     }
 
     // Handle HTTPS URLs: https://github.com/owner/repo.git
-    if url.contains("github.com") {
-        let url = url.trim_end_matches(".git");
-        let parts: Vec<&str> = url.split('/').collect();
+    if let Some(pos) = url_lower.find("github.com/") {
+        let path = &url[pos + 11..]; // Skip "github.com/" preserving case
+        let path = path.strip_suffix(".git").unwrap_or(path);
+        let parts: Vec<&str> = path.split('/').collect();
         if parts.len() >= 2 {
             let repo = parts[parts.len() - 1];
             let owner = parts[parts.len() - 2];
@@ -514,6 +517,20 @@ mod tests {
     fn test_parse_github_url_https_no_git() {
         let (owner, repo) = parse_github_url("https://github.com/cortex-ai/cortex").unwrap();
         assert_eq!(owner, "cortex-ai");
+        assert_eq!(repo, "cortex");
+    }
+
+    #[test]
+    fn test_parse_github_url_mixed_case() {
+        let (owner, repo) = parse_github_url("https://GitHub.com/CortexLM/cortex.git").unwrap();
+        assert_eq!(owner, "CortexLM");
+        assert_eq!(repo, "cortex");
+    }
+
+    #[test]
+    fn test_parse_github_url_ssh_mixed_case() {
+        let (owner, repo) = parse_github_url("git@GitHub.com:CortexLM/cortex.git").unwrap();
+        assert_eq!(owner, "CortexLM");
         assert_eq!(repo, "cortex");
     }
 }
