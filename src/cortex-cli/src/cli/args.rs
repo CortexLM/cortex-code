@@ -197,7 +197,7 @@ pub struct InteractiveArgs {
     pub cwd: Option<PathBuf>,
 
     /// Additional directories that should be writable
-    #[arg(long = "add-dir", value_name = "DIR", help_heading = "Workspace")]
+    #[arg(long = "add-dir", value_name = "DIRS", help_heading = "Workspace")]
     pub add_dir: Vec<PathBuf>,
 
     /// Image files to attach to the initial prompt
