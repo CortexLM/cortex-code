@@ -698,8 +698,9 @@ struct PluginInfo {
 
 /// Get the plugins directory.
 fn get_plugins_dir() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".cortex").join("plugins"))
+    cortex_common::get_cortex_home()
+        .map(|h| h.join("plugins"))
+        .or_else(|| dirs::home_dir().map(|h| h.join(".cortex").join("plugins")))
         .unwrap_or_else(|| PathBuf::from(".cortex/plugins"))
 }
 
