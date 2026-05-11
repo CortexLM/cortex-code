@@ -32,7 +32,7 @@ pub const AFTER_HELP: &str = color_print::cstr!(
     <green,bold>cortex</> <dim>"fix the bug"</>          Start TUI with initial prompt
     <green,bold>cortex run</> <dim>"explain this"</>     Non-interactive single request
     <green,bold>cortex exec</> <dim>"run tests"</>       Headless execution for CI/CD
-    <green,bold>cortex resume --last</>           Continue most recent session
+    <green,bold>cortex resume</>                  Continue most recent session
 
 <cyan,bold>🌍 ENVIRONMENT VARIABLES</>
     <yellow>CORTEX_HOME</>          Override config directory (default: ~/.config/cortex)
