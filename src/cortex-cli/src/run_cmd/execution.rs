@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result, bail};
 use std::io::{self, IsTerminal, Read, Write};
+use std::path::Path;
 use std::time::Duration;
 
 use crate::styled_output::{print_success, print_warning};
@@ -16,6 +17,15 @@ use super::cli::{OutputFormat, RunCli};
 use super::output::{copy_to_clipboard, send_notification};
 use super::session::{SessionMode, resolve_session_id};
 use super::system::check_file_descriptor_limits;
+
+/// Return the working directory value exposed to custom command templates.
+pub fn command_template_cwd(cwd: Option<&Path>) -> String {
+    cwd.map(Path::to_path_buf)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string()
+}
 
 impl RunCli {
     /// Run the command.
@@ -428,12 +438,8 @@ impl RunCli {
             // Try to get the custom command registry
             if let Some(registry) = cortex_engine::try_custom_command_registry() {
                 // Try to execute the custom command
-                let ctx = cortex_engine::TemplateContext::new(message.to_string()).with_cwd(
-                    std::env::current_dir()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string(),
-                );
+                let ctx = cortex_engine::TemplateContext::new(message.to_string())
+                    .with_cwd(command_template_cwd(self.cwd.as_deref()));
 
                 // Use blocking runtime to get the command
                 let prompt = tokio::task::block_in_place(|| {

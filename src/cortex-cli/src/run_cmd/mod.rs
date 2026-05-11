@@ -32,4 +32,5 @@ mod tests;
 
 // Re-export public types
 pub use cli::{OutputFormat, RunCli};
+pub use execution::command_template_cwd;
 pub use system::ModelSpec;
