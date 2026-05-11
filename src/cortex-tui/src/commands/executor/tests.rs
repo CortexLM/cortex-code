@@ -365,6 +365,8 @@ fn test_version() {
     let result = executor.execute_str("/version");
     if let CommandResult::Message(msg) = result {
         assert!(msg.contains("Cortex TUI"));
+        assert!(msg.contains("Cortex Core"));
+        assert!(!msg.contains("cortex-core"));
     } else {
         panic!("Expected Message");
     }
