@@ -805,6 +805,9 @@ pub struct ServersRefreshArgs {
 
 /// History command - view past prompts and sessions.
 #[derive(Args)]
+#[command(
+    after_help = "With no subcommand, list recent prompts. Use search to filter history or clear to delete it."
+)]
 pub struct HistoryCommand {
     #[command(subcommand)]
     pub action: Option<HistorySubcommand>,
@@ -857,7 +860,7 @@ pub struct HistoryClearArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::Parser;
+    use clap::{CommandFactory, Parser};
 
     // ==========================================================================
     // LogLevel tests
@@ -1780,6 +1783,18 @@ mod tests {
         } else {
             panic!("Expected History command");
         }
+    }
+
+    #[test]
+    fn test_history_help_documents_default_list_behavior() {
+        let mut cmd = Cli::command();
+        let help = cmd
+            .find_subcommand_mut("history")
+            .expect("history subcommand should exist")
+            .render_help()
+            .to_string();
+
+        assert!(help.contains("With no subcommand, list recent prompts."));
     }
 
     #[test]
