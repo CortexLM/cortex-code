@@ -14,6 +14,7 @@
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
+use cortex_engine::config::find_cortex_home;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -698,9 +699,9 @@ struct PluginInfo {
 
 /// Get the plugins directory.
 fn get_plugins_dir() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".cortex").join("plugins"))
-        .unwrap_or_else(|| PathBuf::from(".cortex/plugins"))
+    find_cortex_home()
+        .unwrap_or_else(|_| PathBuf::from(".cortex"))
+        .join("plugins")
 }
 
 // =============================================================================
@@ -2210,10 +2211,64 @@ async fn run_publish(args: PluginPublishArgs) -> Result<()> {
 mod tests {
     use super::*;
     use clap::CommandFactory;
+    use serial_test::serial;
+    use std::env;
+    use std::ffi::{OsStr, OsString};
+    use tempfile::TempDir;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: These tests are serialized and restore the environment before returning.
+            unsafe {
+                match &self.original {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
+            }
+        }
+    }
 
     // ==========================================================================
     // PluginInfo serialization tests
     // ==========================================================================
+
+    #[test]
+    #[serial]
+    fn test_get_plugins_dir_uses_cortex_home() {
+        let temp_dir = TempDir::new().unwrap();
+        let cortex_home = temp_dir.path().join("custom-cortex-home");
+        let _config_dir = EnvVarGuard::remove("CORTEX_CONFIG_DIR");
+        let _cortex_home = EnvVarGuard::set("CORTEX_HOME", &cortex_home);
+
+        let plugins_dir = get_plugins_dir();
+
+        assert_eq!(plugins_dir, cortex_home.join("plugins"));
+    }
 
     #[test]
     fn test_plugin_info_serialization_json() {
