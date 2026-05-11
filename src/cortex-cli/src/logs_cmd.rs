@@ -11,6 +11,8 @@ use clap::Parser;
 use serde::Serialize;
 use std::path::PathBuf;
 
+use crate::utils::paths::get_cortex_home;
+
 /// Logs CLI command.
 #[derive(Debug, Parser)]
 pub struct LogsCli {
@@ -58,13 +60,7 @@ struct LogFileInfo {
 
 /// Get the logs directory.
 fn get_logs_dir() -> PathBuf {
-    dirs::cache_dir()
-        .map(|c| c.join("cortex").join("logs"))
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .map(|h| h.join(".cache").join("cortex").join("logs"))
-                .unwrap_or_else(|| PathBuf::from(".cache/cortex/logs"))
-        })
+    get_cortex_home().join("logs")
 }
 
 /// Format bytes as human-readable string.

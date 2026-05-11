@@ -9,16 +9,12 @@ use std::path::PathBuf;
 
 /// Get the cortex home directory.
 pub fn get_cortex_home() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".cortex"))
-        .unwrap_or_else(|| PathBuf::from(".cortex"))
+    crate::utils::paths::get_cortex_home()
 }
 
 /// Get the cortex home directory (alternative function name for clarity).
 pub fn get_cortex_home_or_default() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".cortex"))
-        .unwrap_or_else(|| PathBuf::from(".cortex"))
+    get_cortex_home()
 }
 
 /// Calculate directory size.
