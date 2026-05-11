@@ -7,7 +7,7 @@ use cortex_engine::rollout::get_rollout_path;
 use cortex_protocol::ConversationId;
 
 use crate::debug_cmd::commands::SnapshotArgs;
-use crate::debug_cmd::types::{SnapshotDebugOutput, SnapshotInfo};
+use crate::debug_cmd::types::{SnapshotDebugOutput, SnapshotDiffInfo, SnapshotInfo};
 use crate::debug_cmd::utils::{format_size, get_cortex_home};
 
 /// Run the snapshot debug command.
@@ -196,6 +196,10 @@ pub async fn run_snapshot(args: SnapshotArgs) -> Result<()> {
         snapshot_count,
         session_snapshots,
         total_size_bytes,
+        diff: args.diff.then(|| SnapshotDiffInfo {
+            status: "not_implemented".to_string(),
+            message: "Snapshot diff not yet implemented".to_string(),
+        }),
     };
 
     if args.json {
