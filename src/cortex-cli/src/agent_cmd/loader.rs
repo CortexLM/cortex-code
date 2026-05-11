@@ -3,6 +3,7 @@
 //! Contains functions for loading agents from various sources.
 
 use anyhow::{Context, Result};
+use cortex_engine::config::find_cortex_home;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -11,9 +12,7 @@ use super::types::{AgentFrontmatter, AgentInfo, AgentMode, AgentSource};
 
 /// Get the agents directory path.
 pub fn get_agents_dir() -> Result<PathBuf> {
-    let cortex_home = dirs::home_dir()
-        .map(|h| h.join(".cortex"))
-        .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+    let cortex_home = find_cortex_home().context("Could not determine Cortex home directory")?;
     Ok(cortex_home.join("agents"))
 }
 
