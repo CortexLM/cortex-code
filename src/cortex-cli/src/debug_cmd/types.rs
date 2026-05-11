@@ -215,6 +215,8 @@ pub struct SnapshotDebugOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_snapshots: Option<Vec<SnapshotInfo>>,
     pub total_size_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diff: Option<SnapshotDiffInfo>,
 }
 
 /// Snapshot info.
@@ -223,6 +225,13 @@ pub struct SnapshotInfo {
     pub id: String,
     pub timestamp: String,
     pub size_bytes: u64,
+}
+
+/// Snapshot diff status.
+#[derive(Debug, Serialize)]
+pub struct SnapshotDiffInfo {
+    pub status: String,
+    pub message: String,
 }
 
 // =============================================================================
