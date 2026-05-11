@@ -406,14 +406,14 @@ async fn collect_stats(sessions_dir: &PathBuf, cli: &StatsCli) -> Result<UsageSt
             provider_stats.estimated_cost_usd += session_cost;
 
             // Per-model stats
-            let model_stats =
-                stats
-                    .by_model
-                    .entry(model.to_string())
-                    .or_insert_with(|| ModelStats {
-                        provider: provider.clone(),
-                        ..Default::default()
-                    });
+            let model_key = model.to_lowercase();
+            let model_stats = stats
+                .by_model
+                .entry(model_key)
+                .or_insert_with(|| ModelStats {
+                    provider: provider.clone(),
+                    ..Default::default()
+                });
             model_stats.sessions += 1;
             model_stats.messages += session_data.message_count;
             model_stats.input_tokens += session_data.input_tokens;
