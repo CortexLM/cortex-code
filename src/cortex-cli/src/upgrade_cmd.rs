@@ -338,6 +338,9 @@ fn print_line(line: &str) -> Result<bool> {
 
 /// Convert GitHub URLs to raw content URLs (Issue #3651)
 fn convert_to_raw_url(url: &str) -> String {
+    let normalized_url = url.replace("CortexLM/cortex-cli", "CortexLM/cortex");
+    let url = normalized_url.as_str();
+
     // Handle github.com/user/repo/blob/branch/file -> raw.githubusercontent.com/user/repo/branch/file
     if url.contains("github.com") && url.contains("/blob/") {
         return url
