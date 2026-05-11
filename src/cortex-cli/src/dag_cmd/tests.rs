@@ -1,11 +1,52 @@
 //! Tests for DAG command functionality.
 
-use super::helpers::convert_specs;
+use super::helpers::{convert_specs, get_dag_store_path};
 use super::types::{DagSpecInput, TaskSpecInput};
 use cortex_agents::task::{DagHydrator, Task, TaskId, TaskSpec};
+use serial_test::serial;
 use std::collections::HashMap;
+use std::env;
+use std::ffi::{OsStr, OsString};
+use tempfile::TempDir;
 
 use super::executor::TaskExecutor;
+
+struct EnvVarGuard {
+    key: &'static str,
+    original: Option<OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+        let original = env::var_os(key);
+        // SAFETY: These tests are serialized and restore the environment on drop.
+        unsafe {
+            env::set_var(key, value);
+        }
+        Self { key, original }
+    }
+
+    fn remove(key: &'static str) -> Self {
+        let original = env::var_os(key);
+        // SAFETY: These tests are serialized and restore the environment on drop.
+        unsafe {
+            env::remove_var(key);
+        }
+        Self { key, original }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        // SAFETY: These tests are serialized and restore the environment before returning.
+        unsafe {
+            match &self.original {
+                Some(value) => env::set_var(self.key, value),
+                None => env::remove_var(self.key),
+            }
+        }
+    }
+}
 
 #[test]
 fn test_load_yaml_spec() {
@@ -29,6 +70,33 @@ tasks:
     assert_eq!(spec.name, Some("test-dag".to_string()));
     assert_eq!(spec.tasks.len(), 3);
     assert_eq!(spec.tasks[1].depends_on, vec!["setup"]);
+}
+
+#[test]
+#[serial]
+fn dag_store_path_uses_cortex_home() {
+    let temp_dir = TempDir::new().unwrap();
+    let cortex_home = temp_dir.path().join("custom-cortex-home");
+    let _config_dir = EnvVarGuard::remove("CORTEX_CONFIG_DIR");
+    let _cortex_home = EnvVarGuard::set("CORTEX_HOME", &cortex_home);
+
+    let path = get_dag_store_path().unwrap();
+
+    assert_eq!(path, cortex_home.join("dags"));
+}
+
+#[test]
+#[serial]
+fn dag_store_path_prefers_cortex_config_dir() {
+    let temp_dir = TempDir::new().unwrap();
+    let cortex_home = temp_dir.path().join("cortex-home");
+    let cortex_config_dir = temp_dir.path().join("cortex-config-dir");
+    let _cortex_home = EnvVarGuard::set("CORTEX_HOME", &cortex_home);
+    let _config_dir = EnvVarGuard::set("CORTEX_CONFIG_DIR", &cortex_config_dir);
+
+    let path = get_dag_store_path().unwrap();
+
+    assert_eq!(path, cortex_config_dir.join("dags"));
 }
 
 #[test]
