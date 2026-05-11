@@ -72,6 +72,10 @@ pub fn matches_pattern(name: &str, pattern: &str) -> bool {
     let pattern = pattern.to_lowercase();
     let name = name.to_lowercase();
 
+    if pattern == "*" {
+        return true;
+    }
+
     // Handle simple glob patterns
     if pattern.starts_with('*') && pattern.ends_with('*') {
         // *pattern* - contains
@@ -212,8 +216,8 @@ mod tests {
         assert!(matches_pattern("", ""));
         // Empty pattern doesn't match non-empty name
         assert!(!matches_pattern("anything", ""));
-        // Note: Single "*" glob pattern has a bug in production code that causes a panic,
-        // so we don't test that edge case here. Use "*pattern" or "pattern*" instead.
+        // A single "*" matches any agent name.
+        assert!(matches_pattern("anything", "*"));
     }
 
     // ===========================================
