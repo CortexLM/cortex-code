@@ -439,6 +439,30 @@ fn collect_cortex_home_items(home_dir: &Path) -> Result<Vec<RemovalItem>> {
         });
     }
 
+    // Delegates directory
+    let delegates_dir = cortex_home.join("delegates");
+    if delegates_dir.exists() {
+        items.push(RemovalItem {
+            path: delegates_dir.clone(),
+            description: "Delegate data".to_string(),
+            size: get_dir_size(&delegates_dir),
+            requires_sudo: false,
+            category: RemovalCategory::Data,
+        });
+    }
+
+    // Snapshots directory
+    let snapshots_dir = cortex_home.join("snapshots");
+    if snapshots_dir.exists() {
+        items.push(RemovalItem {
+            path: snapshots_dir.clone(),
+            description: "Snapshot data".to_string(),
+            size: get_dir_size(&snapshots_dir),
+            requires_sudo: false,
+            category: RemovalCategory::Data,
+        });
+    }
+
     // Plugins directory
     let plugins_dir = cortex_home.join("plugins");
     if plugins_dir.exists() {
@@ -974,6 +998,35 @@ mod tests {
             | InstallMethod::Manual
             | InstallMethod::Installer
             | InstallMethod::Unknown => {}
+        }
+    }
+
+    #[test]
+    fn test_collect_cortex_home_items_includes_delegate_and_snapshot_dirs() {
+        let temp_home = tempfile::tempdir().unwrap();
+        let cortex_home = temp_home.path().join(".cortex");
+
+        for dir_name in ["sessions", "delegates", "snapshots"] {
+            let dir = cortex_home.join(dir_name);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("marker.txt"), "test\n").unwrap();
+        }
+
+        let items = collect_cortex_home_items(temp_home.path()).unwrap();
+
+        assert!(
+            items
+                .iter()
+                .any(|item| item.path == cortex_home.join("sessions")),
+            "control sessions directory should be collected"
+        );
+
+        for dir_name in ["delegates", "snapshots"] {
+            let item = items
+                .iter()
+                .find(|item| item.path == cortex_home.join(dir_name))
+                .unwrap_or_else(|| panic!("{dir_name} directory should be collected"));
+            assert_eq!(item.category, RemovalCategory::Data);
         }
     }
 }
