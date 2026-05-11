@@ -23,7 +23,7 @@ pub struct LogsCli {
     pub follow: bool,
 
     /// Filter by log level (error, warn, info, debug, trace)
-    #[arg(long, short = 'l')]
+    #[arg(long, short = 'l', value_parser = parse_log_level)]
     pub level: Option<String>,
 
     /// Show logs from a specific session
@@ -78,6 +78,16 @@ fn format_size(bytes: u64) -> String {
         format!("{:.2} KB", bytes as f64 / KB as f64)
     } else {
         format!("{} B", bytes)
+    }
+}
+
+fn parse_log_level(level: &str) -> std::result::Result<String, String> {
+    let normalized = level.to_ascii_lowercase();
+    match normalized.as_str() {
+        "error" | "warn" | "info" | "debug" | "trace" => Ok(normalized),
+        _ => Err(format!(
+            "invalid log level '{level}'; expected one of: error, warn, info, debug, trace"
+        )),
     }
 }
 
