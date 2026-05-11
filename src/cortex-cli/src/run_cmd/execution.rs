@@ -17,6 +17,21 @@ use super::output::{copy_to_clipboard, send_notification};
 use super::session::{SessionMode, resolve_session_id};
 use super::system::check_file_descriptor_limits;
 
+fn validate_attach_url(server_url: &str) -> Result<()> {
+    let parsed = reqwest::Url::parse(server_url).with_context(|| {
+        format!(
+            "--attach expects an HTTP(S) server URL, got '{server_url}'. Use --file/-f to attach local files."
+        )
+    })?;
+
+    match parsed.scheme() {
+        "http" | "https" => Ok(()),
+        _ => bail!(
+            "--attach expects an HTTP(S) server URL, got '{server_url}'. Use --file/-f to attach local files."
+        ),
+    }
+}
+
 impl RunCli {
     /// Run the command.
     pub async fn run(self) -> Result<()> {
@@ -136,6 +151,7 @@ impl RunCli {
 
         // Execute based on whether we're attaching to a server or running locally
         if let Some(ref server_url) = self.attach {
+            validate_attach_url(server_url)?;
             self.run_attached(server_url, &message, &attachments, session_mode)
                 .await
         } else {
