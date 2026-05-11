@@ -533,7 +533,9 @@ async fn run_list(
     };
 
     for (provider, models) in by_provider {
-        println!("\n{} ({} models)", provider, models.len());
+        let model_count = models.len();
+        let model_label = model_count_label(model_count);
+        println!("\n{} ({} {})", provider, model_count, model_label);
         println!("{}", "-".repeat(40));
         println!(
             "{:<width$} {:^6} {:^12} {:^8} {:^6}",
@@ -603,6 +605,14 @@ async fn run_list(
     Ok(())
 }
 
+fn model_count_label(count: usize) -> &'static str {
+    if count == 1 {
+        "model"
+    } else {
+        "models"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -629,6 +639,13 @@ mod tests {
             .parse()
             .expect("parsing 'provider' should succeed");
         assert_eq!(result, ModelSortOrder::Provider);
+    }
+
+    #[test]
+    fn test_model_count_label() {
+        assert_eq!(model_count_label(0), "models");
+        assert_eq!(model_count_label(1), "model");
+        assert_eq!(model_count_label(2), "models");
     }
 
     #[test]
