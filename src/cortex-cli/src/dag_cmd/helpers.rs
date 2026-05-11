@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use cortex_agents::task::{TaskDag, TaskId, TaskSpec};
+use cortex_engine::config::find_cortex_home;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -9,10 +10,8 @@ use super::types::{DagExecutionStats, DagOutputFormat, DagSpecInput};
 
 /// Get the DAG store path.
 pub fn get_dag_store_path() -> Result<PathBuf> {
-    let data_dir = dirs::data_dir()
-        .or_else(|| dirs::home_dir().map(|h| h.join(".local/share")))
-        .context("Could not determine data directory")?;
-    Ok(data_dir.join("cortex").join("dags"))
+    let cortex_home = find_cortex_home().context("Could not determine Cortex home directory")?;
+    Ok(cortex_home.join("dags"))
 }
 
 /// Load DAG specification from file.
