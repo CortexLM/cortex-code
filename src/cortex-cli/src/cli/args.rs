@@ -383,7 +383,7 @@ pub enum Commands {
     #[command(next_help_heading = categories::UTILITIES)]
     Github(GitHubCli),
 
-    /// Checkout a pull request
+    /// Inspect or checkout a pull request
     #[command(display_order = 51)]
     #[command(next_help_heading = categories::UTILITIES)]
     Pr(PrCli),

@@ -115,7 +115,7 @@ pub const HELP_TEMPLATE: &str = color_print::cstr!(
 
 <cyan,bold>🛠️ Utilities:</>
     <green,bold>github</>      GitHub integration (actions, workflows) <dim>[aliases: gh]</>
-    <green,bold>pr</>          Checkout a pull request
+    <green,bold>pr</>          Inspect or checkout a pull request
     <green,bold>scrape</>      Scrape web content to markdown/text/html
     <green,bold>stats</>       Show usage statistics
     <green,bold>completion</>  Generate shell completion scripts
