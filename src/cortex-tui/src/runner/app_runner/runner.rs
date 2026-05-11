@@ -555,19 +555,25 @@ impl AppRunner {
             tokio::task::spawn_blocking(|| CortexSession::list_recent(50).ok());
 
         // 2. Background update check task - check for new versions without blocking startup
+        let check_for_update_on_startup = self.config.check_for_update_on_startup;
         let update_check_task = tokio::spawn(async move {
-            match UpdateManager::new() {
-                Ok(manager) => match manager.check_update().await {
-                    Ok(info) => info,
+            if check_for_update_on_startup {
+                match UpdateManager::new() {
+                    Ok(manager) => match manager.check_update().await {
+                        Ok(info) => info,
+                        Err(e) => {
+                            tracing::debug!("Update check failed: {}", e);
+                            None
+                        }
+                    },
                     Err(e) => {
-                        tracing::debug!("Update check failed: {}", e);
+                        tracing::debug!("Failed to create update manager: {}", e);
                         None
                     }
-                },
-                Err(e) => {
-                    tracing::debug!("Failed to create update manager: {}", e);
-                    None
                 }
+            } else {
+                tracing::debug!("Startup update check disabled by config");
+                None
             }
         });
 

@@ -121,6 +121,12 @@ async fn check_for_updates_background() {
     }
 }
 
+fn should_check_for_updates_on_startup() -> bool {
+    cortex_engine::Config::load_sync(Default::default())
+        .map(|config| config.check_for_update_on_startup)
+        .unwrap_or(true)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Install Ctrl+C handler to restore terminal state before exiting
@@ -184,7 +190,7 @@ async fn main() -> Result<()> {
     // Background update check (non-blocking)
     let is_upgrade_cmd = matches!(&cli.command, Some(Commands::Upgrade(_)));
     let is_tui_mode = cli.command.is_none();
-    if !is_upgrade_cmd && !is_tui_mode {
+    if !is_upgrade_cmd && !is_tui_mode && should_check_for_updates_on_startup() {
         tokio::spawn(async {
             check_for_updates_background().await;
         });
