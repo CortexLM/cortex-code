@@ -398,6 +398,8 @@ fn collect_cortex_home_items(home_dir: &Path) -> Result<Vec<RemovalItem>> {
     // Configuration files
     let config_files = [
         ("config.toml", "Main configuration file"),
+        ("agents.toml", "Agent configuration"),
+        ("aliases.toml", "Command aliases"),
         ("credentials.json", "Authentication credentials"),
         ("auth.json", "OAuth tokens"),
     ];
@@ -974,6 +976,34 @@ mod tests {
             | InstallMethod::Manual
             | InstallMethod::Installer
             | InstallMethod::Unknown => {}
+        }
+    }
+
+    #[test]
+    fn test_collect_cortex_home_items_includes_agent_config_files() {
+        let temp_home = tempfile::tempdir().unwrap();
+        let cortex_home = temp_home.path().join(".cortex");
+        fs::create_dir_all(&cortex_home).unwrap();
+
+        for file_name in ["config.toml", "agents.toml", "aliases.toml"] {
+            fs::write(cortex_home.join(file_name), "test = true\n").unwrap();
+        }
+
+        let items = collect_cortex_home_items(temp_home.path()).unwrap();
+
+        assert!(
+            items
+                .iter()
+                .any(|item| item.path == cortex_home.join("config.toml")),
+            "control config.toml should be collected"
+        );
+
+        for file_name in ["agents.toml", "aliases.toml"] {
+            let item = items
+                .iter()
+                .find(|item| item.path == cortex_home.join(file_name))
+                .unwrap_or_else(|| panic!("{file_name} should be collected"));
+            assert_eq!(item.category, RemovalCategory::Config);
         }
     }
 }
