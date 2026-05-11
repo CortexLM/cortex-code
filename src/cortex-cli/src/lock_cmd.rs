@@ -13,11 +13,14 @@ use std::path::PathBuf;
 
 /// Lock CLI command.
 #[derive(Debug, Parser)]
+#[command(
+    after_help = "Examples:\n  cortex lock abc12345\n  cortex lock add abc12345 def67890 --reason \"Important conversations\"\n  cortex lock remove abc12345 def67890 --yes\n\nUse 'cortex lock add' or 'cortex lock remove' to operate on multiple session IDs."
+)]
 pub struct LockCli {
     #[command(subcommand)]
     pub subcommand: Option<LockSubcommand>,
 
-    /// Session ID to lock (if no subcommand)
+    /// Session ID to lock (if no subcommand; use 'add' for multiple IDs)
     #[arg()]
     pub session_id: Option<String>,
 }
@@ -25,11 +28,11 @@ pub struct LockCli {
 /// Lock subcommands.
 #[derive(Debug, clap::Subcommand)]
 pub enum LockSubcommand {
-    /// Lock a session
+    /// Lock one or more sessions
     #[command(visible_alias = "protect")]
     Add(LockAddArgs),
 
-    /// Unlock a session
+    /// Unlock one or more sessions
     #[command(visible_aliases = ["unprotect", "rm"])]
     Remove(LockRemoveArgs),
 
@@ -184,17 +187,19 @@ impl LockCli {
                     println!();
                     println!("Protect sessions from accidental deletion:");
                     println!();
-                    println!("  cortex lock <session-id>          Lock a session");
-                    println!("  cortex lock add <session-id>      Lock a session");
-                    println!("  cortex lock remove <session-id>   Unlock a session");
-                    println!("  cortex lock list                  List locked sessions");
-                    println!("  cortex lock check <session-id>    Check if locked");
+                    println!("  cortex lock <session-id>             Lock one session");
+                    println!("  cortex lock add <id1> [id2 ...]      Lock one or more sessions");
+                    println!("  cortex lock remove <id1> [id2 ...]   Unlock one or more sessions");
+                    println!("  cortex lock list                     List locked sessions");
+                    println!("  cortex lock check <session-id>       Check if locked");
                     println!();
                     println!("Options:");
                     println!("  --reason <text>  Add reason for locking");
                     println!();
-                    println!("Example:");
+                    println!("Examples:");
                     println!("  cortex lock abc12345 --reason \"Important conversation\"");
+                    println!("  cortex lock add abc12345 def67890 --reason \"Important conversations\"");
+                    println!("  cortex lock remove abc12345 def67890 --yes");
                     Ok(())
                 }
             }
@@ -357,6 +362,7 @@ async fn run_check(args: LockCheckArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::{CommandFactory, Parser};
 
     #[test]
     fn test_lock_entry_serialization_with_reason() {
@@ -507,5 +513,42 @@ mod tests {
         // Path should include .cortex directory
         let path_str = path.to_string_lossy();
         assert!(path_str.contains(".cortex"));
+    }
+
+    #[test]
+    fn test_lock_help_mentions_multiple_session_ids() {
+        let mut cmd = LockCli::command();
+        let help = cmd.render_long_help().to_string();
+
+        assert!(help.contains("cortex lock add abc12345 def67890"));
+        assert!(help.contains("cortex lock remove abc12345 def67890"));
+        assert!(help.contains("operate on multiple session IDs"));
+    }
+
+    #[test]
+    fn test_lock_add_accepts_multiple_session_ids() {
+        let cli = LockCli::try_parse_from(["lock", "add", "abc12345", "def67890"])
+            .expect("should parse multiple session IDs");
+
+        match cli.subcommand {
+            Some(LockSubcommand::Add(args)) => {
+                assert_eq!(args.session_ids, vec!["abc12345", "def67890"]);
+            }
+            _ => panic!("expected lock add subcommand"),
+        }
+    }
+
+    #[test]
+    fn test_lock_remove_accepts_multiple_session_ids() {
+        let cli = LockCli::try_parse_from(["lock", "remove", "abc12345", "def67890", "--yes"])
+            .expect("should parse multiple session IDs");
+
+        match cli.subcommand {
+            Some(LockSubcommand::Remove(args)) => {
+                assert_eq!(args.session_ids, vec!["abc12345", "def67890"]);
+                assert!(args.yes);
+            }
+            _ => panic!("expected lock remove subcommand"),
+        }
     }
 }
