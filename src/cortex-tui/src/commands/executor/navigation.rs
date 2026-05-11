@@ -26,7 +26,7 @@ impl CommandExecutor {
                 if n.parse::<usize>().is_ok() {
                     CommandResult::SetValue("goto".to_string(), n.to_string())
                 } else {
-                    CommandResult::Error(format!("Invalid message number: {}", n))
+                    CommandResult::Error(format!("Invalid message number \"{}\"", n))
                 }
             }
             None => CommandResult::OpenModal(ModalType::Form("goto".to_string())),

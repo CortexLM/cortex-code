@@ -389,7 +389,11 @@ fn test_goto_validation() {
     ));
 
     let result = executor.execute_str("/goto abc");
-    assert!(matches!(result, CommandResult::Error(_)));
+    assert!(matches!(
+        result,
+        CommandResult::Error(ref msg)
+            if msg == "Invalid message number \"abc\"" && !msg.contains("number:")
+    ));
 
     let result = executor.execute_str("/goto");
     assert!(matches!(
