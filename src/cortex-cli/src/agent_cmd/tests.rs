@@ -3,10 +3,63 @@
 #[cfg(test)]
 mod tests {
     use crate::agent_cmd::cli::{CopyArgs, ExportArgs};
-    use crate::agent_cmd::loader::{
-        load_builtin_agents, parse_frontmatter, read_file_with_encoding,
-    };
+    use crate::agent_cmd::loader::{get_agents_dir, load_builtin_agents, parse_frontmatter};
     use crate::agent_cmd::types::AgentMode;
+    use crate::utils::file::read_file_with_encoding;
+    use serial_test::serial;
+    use std::env;
+    use std::ffi::{OsStr, OsString};
+    use tempfile::TempDir;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: These tests are serialized and restore the environment before returning.
+            unsafe {
+                match &self.original {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_agents_dir_uses_cortex_home() {
+        let temp_dir = TempDir::new().unwrap();
+        let cortex_home = temp_dir.path().join("custom-cortex-home");
+        let _config_dir = EnvVarGuard::remove("CORTEX_CONFIG_DIR");
+        let _cortex_home = EnvVarGuard::set("CORTEX_HOME", &cortex_home);
+
+        let agents_dir = get_agents_dir().unwrap();
+
+        assert_eq!(agents_dir, cortex_home.join("agents"));
+    }
 
     #[test]
     fn test_read_file_with_utf8() {
