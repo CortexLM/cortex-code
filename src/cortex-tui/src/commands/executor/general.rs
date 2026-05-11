@@ -11,7 +11,7 @@ impl CommandExecutor {
 
     pub(super) fn cmd_version(&self) -> CommandResult {
         CommandResult::Message(format!(
-            "Cortex TUI v{}\ncortex-core v{}",
+            "Cortex TUI v{}\nCortex Core v{}",
             env!("CARGO_PKG_VERSION"),
             cortex_core::VERSION
         ))
