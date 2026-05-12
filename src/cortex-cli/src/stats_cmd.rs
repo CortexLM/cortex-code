@@ -192,9 +192,11 @@ impl StatsCli {
 
 /// Get the cortex home directory.
 fn get_cortex_home() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".cortex"))
-        .unwrap_or_else(|| PathBuf::from(".cortex"))
+    cortex_common::get_cortex_home().unwrap_or_else(|| {
+        dirs::home_dir()
+            .map(|h| h.join(".cortex"))
+            .unwrap_or_else(|| PathBuf::from(".cortex"))
+    })
 }
 
 /// Get pricing for a model.
@@ -733,6 +735,21 @@ mod tests {
         // GPT-4o: $2.50/$10 per 1M
         let cost = calculate_cost("gpt-4o", 1_000_000, 1_000_000);
         assert!((cost - 12.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_get_cortex_home_respects_cortex_home() {
+        let previous = std::env::var_os("CORTEX_HOME");
+        let expected = std::env::temp_dir().join("cortex-stats-test-home");
+
+        unsafe { std::env::set_var("CORTEX_HOME", &expected) };
+        assert_eq!(get_cortex_home(), expected);
+
+        if let Some(value) = previous {
+            unsafe { std::env::set_var("CORTEX_HOME", value) };
+        } else {
+            unsafe { std::env::remove_var("CORTEX_HOME") };
+        }
     }
 
     #[test]
