@@ -551,7 +551,7 @@ pub async fn run_whoami() -> Result<()> {
         && !token.is_empty()
     {
         println!(
-            "Authenticated via CORTEX_API_KEY: {}",
+            "Authenticated via CORTEX_API_KEY environment variable: {}",
             safe_format_key(&token)
         );
         return Ok(());
