@@ -21,6 +21,8 @@ use clap::Parser;
 
 use cortex_cli::cli::{Cli, ColorMode, Commands, LogLevel, dispatch_command};
 
+const CORTEX_HOME_ENV: &str = "CORTEX_HOME";
+
 /// Apply process hardening measures early in startup.
 #[cfg(not(debug_assertions))]
 #[ctor::ctor]
@@ -72,38 +74,196 @@ fn setup_debug_file_logging() -> Result<DebugLogGuard> {
     Ok(DebugLogGuard { _guard: guard })
 }
 
-/// Check if CORTEX_HOME is writable.
-fn check_cortex_home_writable() -> Result<()> {
+#[derive(Debug)]
+struct StartupWriteCheckTarget {
+    label: &'static str,
+    source: &'static str,
+    path: std::path::PathBuf,
+}
+
+/// Resolve startup locations that need write access.
+fn startup_write_check_targets() -> Result<Vec<StartupWriteCheckTarget>> {
+    let cortex_home = cortex_engine::config::find_cortex_home()?;
+    let cortex_home_source = if std::env::var(cortex_engine::config::CORTEX_CONFIG_DIR_ENV)
+        .is_ok_and(|v| !v.is_empty())
+    {
+        cortex_engine::config::CORTEX_CONFIG_DIR_ENV
+    } else if std::env::var(CORTEX_HOME_ENV).is_ok_and(|v| !v.is_empty()) {
+        CORTEX_HOME_ENV
+    } else {
+        "default Cortex home"
+    };
+
+    let mut targets = vec![StartupWriteCheckTarget {
+        label: "Cortex home",
+        source: cortex_home_source,
+        path: cortex_home.clone(),
+    }];
+
+    if std::env::var(cortex_engine::config::CORTEX_CONFIG_ENV).is_ok_and(|v| !v.is_empty()) {
+        let config_path = cortex_engine::config::get_config_path(&cortex_home);
+        if let Some(config_parent) = config_path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            if config_parent != cortex_home {
+                targets.push(StartupWriteCheckTarget {
+                    label: "Cortex config parent",
+                    source: cortex_engine::config::CORTEX_CONFIG_ENV,
+                    path: config_parent.to_path_buf(),
+                });
+            }
+        }
+    }
+
+    Ok(targets)
+}
+
+fn check_startup_write_target(target: &StartupWriteCheckTarget) -> Result<()> {
     use anyhow::bail;
 
-    if let Ok(cortex_home_env) = std::env::var("CORTEX_HOME") {
-        let cortex_home_path = std::path::Path::new(&cortex_home_env);
-        if cortex_home_path.exists() {
-            let test_file = cortex_home_path.join(".write_test");
-            match std::fs::File::create(&test_file) {
-                Ok(_) => {
-                    let _ = std::fs::remove_file(&test_file);
+    if !target.path.exists() {
+        return Ok(());
+    }
+
+    if !target.path.is_dir() {
+        bail!(
+            "Cannot use {}: expected a directory\n\n\
+            {} resolves to: {}\n\
+            This path exists but is not a directory.\n\n\
+            To fix this, point {} at a writable directory or unset it to use the default.",
+            target.label,
+            target.source,
+            target.path.display(),
+            target.source
+        );
+    }
+
+    let test_file = target.path.join(".write_test");
+    match std::fs::File::create(&test_file) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&test_file);
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            bail!(
+                "Cannot write to {}: Permission denied\n\n\
+                {} resolves to: {}\n\
+                This directory exists but is not writable.\n\n\
+                To fix this, point {} at a writable directory or update the directory permissions.",
+                target.label,
+                target.source,
+                target.path.display(),
+                target.source
+            );
+        }
+        Err(_) => {
+            // Other errors (e.g., disk full) - continue and let it fail later.
+        }
+    }
+
+    Ok(())
+}
+
+/// Check if configured startup paths are writable.
+fn check_cortex_home_writable() -> Result<()> {
+    for target in startup_write_check_targets()? {
+        check_startup_write_target(&target)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use std::ffi::{OsStr, OsString};
+    use tempfile::TempDir;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+            let original = std::env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe { std::env::set_var(key, value) };
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = std::env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe { std::env::remove_var(key) };
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(value) => {
+                    // SAFETY: These tests are serialized and restore the environment on drop.
+                    unsafe { std::env::set_var(self.key, value) };
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
-                    bail!(
-                        "Cannot write to CORTEX_HOME: Permission denied\n\n\
-                        CORTEX_HOME is set to: {}\n\
-                        This directory exists but is not writable.\n\n\
-                        To fix this, either:\n\
-                        - Change permissions: chmod u+w {}\n\
-                        - Use a different directory: export CORTEX_HOME=/path/to/writable/dir\n\
-                        - Unset the variable to use default: unset CORTEX_HOME",
-                        cortex_home_env,
-                        cortex_home_env
-                    );
-                }
-                Err(_) => {
-                    // Other errors (e.g., disk full) - continue and let it fail later
+                None => {
+                    // SAFETY: These tests are serialized and restore the environment on drop.
+                    unsafe { std::env::remove_var(self.key) };
                 }
             }
         }
     }
-    Ok(())
+
+    #[test]
+    #[serial]
+    fn check_cortex_home_writable_rejects_cortex_config_dir_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_dir_file = temp_dir.path().join("config-dir");
+        std::fs::write(&config_dir_file, "not a directory").unwrap();
+
+        let _home = EnvVarGuard::remove("CORTEX_HOME");
+        let _config = EnvVarGuard::remove(cortex_engine::config::CORTEX_CONFIG_ENV);
+        let _config_dir = EnvVarGuard::set(
+            cortex_engine::config::CORTEX_CONFIG_DIR_ENV,
+            config_dir_file.as_os_str(),
+        );
+
+        let err = check_cortex_home_writable()
+            .expect_err("CORTEX_CONFIG_DIR should be validated when it overrides CORTEX_HOME")
+            .to_string();
+
+        assert!(err.contains(cortex_engine::config::CORTEX_CONFIG_DIR_ENV));
+        assert!(err.contains(&config_dir_file.display().to_string()));
+    }
+
+    #[test]
+    #[serial]
+    fn check_cortex_home_writable_rejects_cortex_config_parent_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_home = temp_dir.path().join("config-home");
+        let config_parent_file = temp_dir.path().join("config-parent");
+        std::fs::create_dir_all(&config_home).unwrap();
+        std::fs::write(&config_parent_file, "not a directory").unwrap();
+
+        let _home = EnvVarGuard::remove("CORTEX_HOME");
+        let _config_dir = EnvVarGuard::set(
+            cortex_engine::config::CORTEX_CONFIG_DIR_ENV,
+            config_home.as_os_str(),
+        );
+        let _config = EnvVarGuard::set(
+            cortex_engine::config::CORTEX_CONFIG_ENV,
+            config_parent_file.join("config.toml").as_os_str(),
+        );
+
+        let err = check_cortex_home_writable()
+            .expect_err("CORTEX_CONFIG parent should be validated when it overrides config path")
+            .to_string();
+
+        assert!(err.contains(cortex_engine::config::CORTEX_CONFIG_ENV));
+        assert!(err.contains(&config_parent_file.display().to_string()));
+    }
 }
 
 /// Check for updates in the background.
