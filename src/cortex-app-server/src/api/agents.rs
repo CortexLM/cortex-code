@@ -1,6 +1,9 @@
 //! Custom agents API endpoints.
 
-use std::sync::Arc;
+use std::{
+    path::{Path as FsPath, PathBuf},
+    sync::Arc,
+};
 
 use axum::{
     Json,
@@ -16,7 +19,7 @@ use super::types::{
 };
 
 /// Read agent file from disk.
-fn read_agent_file(path: &std::path::Path, scope: &str) -> Option<AgentDefinition> {
+fn read_agent_file(path: &FsPath, scope: &str) -> Option<AgentDefinition> {
     if path.extension().and_then(|e| e.to_str()) != Some("md") {
         return None;
     }
@@ -70,14 +73,31 @@ fn read_agent_file(path: &std::path::Path, scope: &str) -> Option<AgentDefinitio
     })
 }
 
+fn project_agents_dir() -> PathBuf {
+    PathBuf::from(".cortex/agents")
+}
+
+fn user_agents_dir() -> AppResult<PathBuf> {
+    maybe_user_agents_dir()
+        .ok_or_else(|| AppError::Internal("Cannot find user config directory".to_string()))
+}
+
+fn maybe_user_agents_dir() -> Option<PathBuf> {
+    dirs::config_dir().map(|dir| dir.join("cortex/agents"))
+}
+
+fn agent_file_path(dir: &FsPath, name: &str) -> PathBuf {
+    dir.join(format!("{name}.md"))
+}
+
 /// List all agents.
 pub async fn list_agents() -> AppResult<Json<Vec<AgentDefinition>>> {
     let mut agents = Vec::new();
 
-    // Project agents (.factory/agents/)
-    let project_dir = std::path::Path::new(".factory/agents");
+    // Project agents (.cortex/agents/)
+    let project_dir = project_agents_dir();
     if project_dir.exists()
-        && let Ok(entries) = std::fs::read_dir(project_dir)
+        && let Ok(entries) = std::fs::read_dir(&project_dir)
     {
         for entry in entries.flatten() {
             if let Some(agent) = read_agent_file(&entry.path(), "project") {
@@ -86,9 +106,8 @@ pub async fn list_agents() -> AppResult<Json<Vec<AgentDefinition>>> {
         }
     }
 
-    // User agents (~/.factory/agents/)
-    if let Some(home) = dirs::home_dir() {
-        let user_dir = home.join(".factory/agents");
+    // User agents (config-dir/cortex/agents/)
+    if let Some(user_dir) = maybe_user_agents_dir() {
         if user_dir.exists()
             && let Ok(entries) = std::fs::read_dir(&user_dir)
         {
@@ -106,14 +125,14 @@ pub async fn list_agents() -> AppResult<Json<Vec<AgentDefinition>>> {
 /// Get a specific agent.
 pub async fn get_agent(Path(name): Path<String>) -> AppResult<Json<AgentDefinition>> {
     // Check project first
-    let project_path = std::path::Path::new(".factory/agents").join(format!("{}.md", name));
+    let project_path = agent_file_path(&project_agents_dir(), &name);
     if let Some(agent) = read_agent_file(&project_path, "project") {
         return Ok(Json(agent));
     }
 
     // Check user
-    if let Some(home) = dirs::home_dir() {
-        let user_path = home.join(".factory/agents").join(format!("{}.md", name));
+    if let Some(user_dir) = maybe_user_agents_dir() {
+        let user_path = agent_file_path(&user_dir, &name);
         if let Some(agent) = read_agent_file(&user_path, "user") {
             return Ok(Json(agent));
         }
@@ -125,17 +144,15 @@ pub async fn get_agent(Path(name): Path<String>) -> AppResult<Json<AgentDefiniti
 /// Create or update an agent.
 pub async fn create_agent(Json(req): Json<CreateAgentRequest>) -> AppResult<Json<AgentDefinition>> {
     let dir = if req.scope == "project" {
-        std::path::PathBuf::from(".factory/agents")
+        project_agents_dir()
     } else {
-        dirs::home_dir()
-            .ok_or_else(|| AppError::Internal("Cannot find home directory".to_string()))?
-            .join(".factory/agents")
+        user_agents_dir()?
     };
 
     std::fs::create_dir_all(&dir)
         .map_err(|e| AppError::Internal(format!("Failed to create directory: {}", e)))?;
 
-    let path = dir.join(format!("{}.md", req.name));
+    let path = agent_file_path(&dir, &req.name);
 
     // Build markdown with YAML frontmatter
     let content = format!(
@@ -170,7 +187,7 @@ pub async fn create_agent(Json(req): Json<CreateAgentRequest>) -> AppResult<Json
 /// Delete an agent.
 pub async fn delete_agent(Path(name): Path<String>) -> AppResult<Json<serde_json::Value>> {
     // Try project first
-    let project_path = std::path::Path::new(".factory/agents").join(format!("{}.md", name));
+    let project_path = agent_file_path(&project_agents_dir(), &name);
     if project_path.exists() {
         std::fs::remove_file(&project_path)
             .map_err(|e| AppError::Internal(format!("Failed to delete: {}", e)))?;
@@ -178,8 +195,8 @@ pub async fn delete_agent(Path(name): Path<String>) -> AppResult<Json<serde_json
     }
 
     // Try user
-    if let Some(home) = dirs::home_dir() {
-        let user_path = home.join(".factory/agents").join(format!("{}.md", name));
+    if let Some(user_dir) = maybe_user_agents_dir() {
+        let user_path = agent_file_path(&user_dir, &name);
         if user_path.exists() {
             std::fs::remove_file(&user_path)
                 .map_err(|e| AppError::Internal(format!("Failed to delete: {}", e)))?;
@@ -229,9 +246,8 @@ pub async fn update_agent(
     Json(req): Json<UpdateAgentRequest>,
 ) -> AppResult<Json<AgentDefinition>> {
     // Find existing agent
-    let project_path = std::path::Path::new(".factory/agents").join(format!("{}.md", name));
-    let user_path =
-        dirs::home_dir().map(|h| h.join(".factory/agents").join(format!("{}.md", name)));
+    let project_path = agent_file_path(&project_agents_dir(), &name);
+    let user_path = maybe_user_agents_dir().map(|dir| agent_file_path(&dir, &name));
 
     let (existing, path) = if let Some(agent) = read_agent_file(&project_path, "project") {
         (agent, project_path)
@@ -353,17 +369,15 @@ pub async fn import_agent(Json(req): Json<ImportAgentRequest>) -> AppResult<Json
 
     // Determine directory
     let dir = if req.scope == "project" {
-        std::path::PathBuf::from(".factory/agents")
+        project_agents_dir()
     } else {
-        dirs::home_dir()
-            .ok_or_else(|| AppError::Internal("Cannot find home directory".to_string()))?
-            .join(".factory/agents")
+        user_agents_dir()?
     };
 
     std::fs::create_dir_all(&dir)
         .map_err(|e| AppError::Internal(format!("Failed to create directory: {}", e)))?;
 
-    let path = dir.join(format!("{}.md", name));
+    let path = agent_file_path(&dir, &name);
 
     // Write the file
     std::fs::write(&path, &req.content)
@@ -408,4 +422,91 @@ pub async fn generate_agent_prompt(
         model: "inherit".to_string(),
         permission_mode: "default".to_string(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use serial_test::serial;
+    use tempfile::TempDir;
+
+    struct CurrentDirGuard {
+        original: std::path::PathBuf,
+    }
+
+    impl CurrentDirGuard {
+        fn set(path: &std::path::Path) -> Self {
+            let original = std::env::current_dir().unwrap();
+            std::env::set_current_dir(path).unwrap();
+            Self { original }
+        }
+    }
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            std::env::set_current_dir(&self.original).unwrap();
+        }
+    }
+
+    fn create_project_agent_request(name: &str) -> CreateAgentRequest {
+        CreateAgentRequest {
+            name: name.to_string(),
+            description: "Created through the app-server API".to_string(),
+            tools: vec!["Read".to_string()],
+            model: "inherit".to_string(),
+            permission_mode: "default".to_string(),
+            prompt: "Use the standard project agent directory.".to_string(),
+            scope: "project".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn create_project_agent_writes_to_standard_project_agents_dir() {
+        let temp = TempDir::new().unwrap();
+        let _cwd = CurrentDirGuard::set(temp.path());
+
+        let name = "api-project-agent";
+        let _ = create_agent(Json(create_project_agent_request(name)))
+            .await
+            .unwrap();
+
+        assert!(
+            temp.path()
+                .join(".cortex/agents")
+                .join(format!("{name}.md"))
+                .exists()
+        );
+        assert!(
+            !temp
+                .path()
+                .join(".factory/agents")
+                .join(format!("{name}.md"))
+                .exists()
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn list_agents_reads_standard_project_agents_dir() {
+        let temp = TempDir::new().unwrap();
+        let _cwd = CurrentDirGuard::set(temp.path());
+        let agents_dir = temp.path().join(".cortex/agents");
+        std::fs::create_dir_all(&agents_dir).unwrap();
+
+        std::fs::write(
+            agents_dir.join("listed-api-agent.md"),
+            "---\ndescription: Listed through standard project storage\ntools: [\"Read\"]\nmodel: inherit\npermissionMode: default\n---\n\nVisible to app-server list.",
+        )
+        .unwrap();
+
+        let Json(agents) = list_agents().await.unwrap();
+
+        assert!(agents.iter().any(|agent| {
+            agent.name == "listed-api-agent"
+                && agent.scope == "project"
+                && agent.description == "Listed through standard project storage"
+        }));
+    }
 }
