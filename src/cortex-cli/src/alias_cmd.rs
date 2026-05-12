@@ -104,9 +104,13 @@ pub struct AliasConfig {
 
 /// Get the aliases config file path.
 fn get_aliases_config_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".cortex").join("aliases.toml"))
-        .unwrap_or_else(|| PathBuf::from(".cortex/aliases.toml"))
+    cortex_common::get_cortex_home()
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|h| h.join(".cortex"))
+                .unwrap_or_else(|| PathBuf::from(".cortex"))
+        })
+        .join("aliases.toml")
 }
 
 /// Load aliases from config file.
@@ -274,6 +278,21 @@ async fn run_show(args: AliasShowArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_get_aliases_config_path_respects_cortex_home() {
+        let previous = std::env::var_os("CORTEX_HOME");
+        let expected_home = std::env::temp_dir().join("cortex-alias-test-home");
+
+        unsafe { std::env::set_var("CORTEX_HOME", &expected_home) };
+        assert_eq!(get_aliases_config_path(), expected_home.join("aliases.toml"));
+
+        if let Some(value) = previous {
+            unsafe { std::env::set_var("CORTEX_HOME", value) };
+        } else {
+            unsafe { std::env::remove_var("CORTEX_HOME") };
+        }
+    }
 
     // ==========================================================================
     // AliasDefinition tests
