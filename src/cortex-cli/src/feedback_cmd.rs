@@ -121,9 +121,13 @@ struct FeedbackEntry {
 
 /// Get the feedback directory.
 fn get_feedback_dir() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".cortex").join("feedback"))
-        .unwrap_or_else(|| PathBuf::from(".cortex/feedback"))
+    cortex_common::get_cortex_home()
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|h| h.join(".cortex"))
+                .unwrap_or_else(|| PathBuf::from(".cortex"))
+        })
+        .join("feedback")
 }
 
 impl FeedbackCli {
@@ -410,6 +414,21 @@ fn read_single_line() -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_get_feedback_dir_respects_cortex_home() {
+        let previous = std::env::var_os("CORTEX_HOME");
+        let expected_home = std::env::temp_dir().join("cortex-feedback-test-home");
+
+        unsafe { std::env::set_var("CORTEX_HOME", &expected_home) };
+        assert_eq!(get_feedback_dir(), expected_home.join("feedback"));
+
+        if let Some(value) = previous {
+            unsafe { std::env::set_var("CORTEX_HOME", value) };
+        } else {
+            unsafe { std::env::remove_var("CORTEX_HOME") };
+        }
+    }
 
     #[test]
     fn test_feedback_entry_serialization_with_session() {
