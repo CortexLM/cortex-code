@@ -8,6 +8,7 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use cortex_engine::config::find_cortex_home;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -192,9 +193,7 @@ impl StatsCli {
 
 /// Get the cortex home directory.
 fn get_cortex_home() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".cortex"))
-        .unwrap_or_else(|| PathBuf::from(".cortex"))
+    find_cortex_home().unwrap_or_else(|_| PathBuf::from(".cortex"))
 }
 
 /// Get pricing for a model.
@@ -700,6 +699,58 @@ fn format_cost(cost: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+    use std::env;
+    use std::ffi::{OsStr, OsString};
+    use tempfile::TempDir;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: These tests are serialized and restore the environment before returning.
+            unsafe {
+                match &self.original {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_cortex_home_uses_cortex_home_env() {
+        let temp_dir = TempDir::new().unwrap();
+        let cortex_home = temp_dir.path().join("custom-cortex-home");
+        let _config_dir = EnvVarGuard::remove("CORTEX_CONFIG_DIR");
+        let _cortex_home = EnvVarGuard::set("CORTEX_HOME", &cortex_home);
+
+        assert_eq!(get_cortex_home(), cortex_home);
+    }
 
     #[test]
     fn test_format_number() {
