@@ -77,18 +77,23 @@ pub async fn fetch_url(args: Value) -> ToolResult {
         Err(e) => return ToolResult::error(format!("Response is not valid UTF-8: {e}")),
     };
 
-    // Truncate for display if too long
-    let truncated = if content.len() > 100_000 {
+    let truncated = truncate_content_for_display(content);
+
+    ToolResult::success(truncated)
+}
+
+fn truncate_content_for_display(content: String) -> String {
+    const MAX_DISPLAY_CHARS: usize = 100_000;
+
+    let full_size = content.chars().count();
+    if full_size > MAX_DISPLAY_CHARS {
+        let truncated: String = content.chars().take(MAX_DISPLAY_CHARS).collect();
         format!(
-            "{}...\n[Truncated at 100000 chars, full size: {} chars]",
-            &content[..100_000],
-            content.len()
+            "{truncated}...\n[Truncated at {MAX_DISPLAY_CHARS} chars, full size: {full_size} chars]"
         )
     } else {
         content
-    };
-
-    ToolResult::success(truncated)
+    }
 }
 
 /// Search the web.
@@ -131,5 +136,19 @@ pub async fn web_search(args: Value) -> ToolResult {
             ToolResult::success(format!("Search results for: {query}\n{truncated}"))
         }
         Err(e) => ToolResult::error(format!("Web search failed: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncates_fetch_output_on_utf8_boundary_without_panic() {
+        let content = format!("{}{}b", "a".repeat(99_999), "é");
+
+        let truncated = truncate_content_for_display(content);
+
+        assert!(truncated.contains("é...\n[Truncated at 100000 chars, full size: 100001 chars]"));
     }
 }
