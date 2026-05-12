@@ -6,7 +6,7 @@ mod tests {
 
     use cortex_engine::create_client_builder;
 
-    use crate::scrape_cmd::command::ScrapeCommand;
+    use crate::scrape_cmd::command::{ScrapeCommand, ensure_trailing_newline};
     use crate::scrape_cmd::html::{html_to_markdown, html_to_text, normalize_whitespace};
     use crate::scrape_cmd::http::parse_headers;
     use crate::scrape_cmd::types::OutputFormat;
@@ -143,6 +143,19 @@ mod tests {
             Some(OutputFormat::Html)
         );
         assert!("invalid".parse::<OutputFormat>().is_err());
+    }
+
+    #[test]
+    fn test_ensure_trailing_newline() {
+        assert_eq!(
+            ensure_trailing_newline("scraped content".to_string()),
+            "scraped content\n"
+        );
+        assert_eq!(
+            ensure_trailing_newline("already terminated\n".to_string()),
+            "already terminated\n"
+        );
+        assert_eq!(ensure_trailing_newline(String::new()), "");
     }
 
     #[test]
