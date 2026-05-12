@@ -7,6 +7,7 @@ use anyhow::{Result, bail};
 use clap::CommandFactory;
 use clap_complete::{Shell, generate};
 use std::io::{self, BufRead, Write};
+use std::path::PathBuf;
 
 use super::args::*;
 use crate::login::{
@@ -532,9 +533,7 @@ fn install_completions(shell: Shell) -> Result<()> {
 pub async fn run_whoami() -> Result<()> {
     use cortex_login::{AuthMode, load_auth_with_fallback, safe_format_key};
 
-    let cortex_home = dirs::home_dir()
-        .map(|h| h.join(".cortex"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".cortex"));
+    let cortex_home = get_whoami_cortex_home();
 
     // Check environment variables first
     if let Ok(token) = std::env::var("CORTEX_AUTH_TOKEN")
@@ -587,6 +586,10 @@ pub async fn run_whoami() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn get_whoami_cortex_home() -> PathBuf {
+    cortex_engine::config::find_cortex_home().unwrap_or_else(|_| PathBuf::from(".cortex"))
 }
 
 /// Resume a previous session.
@@ -996,8 +999,50 @@ pub async fn run_history(history_cli: HistoryCommand) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::get_whoami_cortex_home;
     use clap_complete::Shell;
+    use serial_test::serial;
+    use std::env;
+    use std::ffi::{OsStr, OsString};
     use std::io::{self, ErrorKind, Write};
+    use tempfile::TempDir;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+            let original = env::var_os(key);
+            unsafe {
+                // SAFETY: Tests using this guard are serialized with `#[serial]`.
+                env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = env::var_os(key);
+            unsafe {
+                // SAFETY: Tests using this guard are serialized with `#[serial]`.
+                env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            unsafe {
+                // SAFETY: Tests using this guard are serialized with `#[serial]`.
+                match &self.original {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
+            }
+        }
+    }
 
     // =========================================================================
     // Shell name parsing tests (unit test the parsing logic directly)
@@ -1017,6 +1062,17 @@ mod tests {
             "elvish" => Shell::Elvish,
             _ => Shell::Bash, // Default to Bash for unknown shells
         }
+    }
+
+    #[test]
+    #[serial]
+    fn test_whoami_cortex_home_uses_cortex_config_dir() {
+        let temp_dir = TempDir::new().unwrap();
+        let cortex_config_dir = temp_dir.path().join("custom-config-dir");
+        let _cortex_home = EnvVarGuard::remove("CORTEX_HOME");
+        let _config_dir = EnvVarGuard::set("CORTEX_CONFIG_DIR", &cortex_config_dir);
+
+        assert_eq!(get_whoami_cortex_home(), cortex_config_dir);
     }
 
     /// Helper to extract shell name from path (like the real function does)
