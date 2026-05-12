@@ -119,6 +119,7 @@ pub const HELP_TEMPLATE: &str = color_print::cstr!(
     <green,bold>scrape</>      Scrape web content to markdown/text/html
     <green,bold>stats</>       Show usage statistics
     <green,bold>completion</>  Generate shell completion scripts
+    <dim>Note: Commands without subcommands only support --help; nested commands like github also accept help.</>
 
 <cyan,bold>🔧 Maintenance:</>
     <green,bold>upgrade</>     Check for and install updates
