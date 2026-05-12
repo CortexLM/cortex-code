@@ -7,6 +7,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use cortex_engine::config::find_cortex_home;
 use cortex_engine::list_sessions;
 use cortex_engine::rollout::get_rollout_path;
 use cortex_engine::rollout::reader::{RolloutItem, get_session_meta, read_rollout};
@@ -111,9 +112,7 @@ pub struct ExportToolCall {
 impl ExportCommand {
     /// Run the export command.
     pub async fn run(self) -> Result<()> {
-        let cortex_home = dirs::home_dir()
-            .map(|h| h.join(".cortex"))
-            .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+        let cortex_home = get_cortex_home()?;
 
         // Get session ID - either from arg or interactive picker
         let session_id = match self.session_id {
@@ -251,6 +250,11 @@ fn escape_csv_field(field: &str) -> String {
     }
 }
 
+/// Get the cortex home directory.
+fn get_cortex_home() -> Result<PathBuf> {
+    find_cortex_home().context("Could not determine Cortex home directory")
+}
+
 /// Select a session interactively.
 async fn select_session(cortex_home: &PathBuf) -> Result<String> {
     let sessions = list_sessions(cortex_home)?;
@@ -379,6 +383,58 @@ fn extract_agent_refs(messages: &[ExportMessage]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+    use std::env;
+    use std::ffi::{OsStr, OsString};
+    use tempfile::TempDir;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: These tests are serialized and restore the environment before returning.
+            unsafe {
+                match &self.original {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_cortex_home_uses_cortex_home_env() {
+        let temp_dir = TempDir::new().unwrap();
+        let cortex_home = temp_dir.path().join("custom-cortex-home");
+        let _config_dir = EnvVarGuard::remove("CORTEX_CONFIG_DIR");
+        let _cortex_home = EnvVarGuard::set("CORTEX_HOME", &cortex_home);
+
+        assert_eq!(get_cortex_home().unwrap(), cortex_home);
+    }
 
     #[test]
     fn test_session_export_serialization() {
