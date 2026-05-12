@@ -10,6 +10,8 @@ use clap::Parser;
 use serde::Serialize;
 use std::path::PathBuf;
 
+use crate::debug_cmd::utils::get_cortex_home;
+
 /// Cache CLI command.
 #[derive(Debug, Parser)]
 pub struct CacheCli {
@@ -110,13 +112,7 @@ struct CacheCategory {
 
 /// Get the cache directory.
 fn get_cache_dir() -> PathBuf {
-    dirs::cache_dir()
-        .map(|c| c.join("cortex"))
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .map(|h| h.join(".cache").join("cortex"))
-                .unwrap_or_else(|| PathBuf::from(".cache/cortex"))
-        })
+    get_cortex_home().join("cache")
 }
 
 /// Calculate directory size recursively.
