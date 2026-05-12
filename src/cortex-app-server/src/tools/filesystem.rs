@@ -110,19 +110,32 @@ pub async fn write_file(cwd: &Path, args: Value) -> ToolResult {
         .to_string();
 
     match tokio::fs::write(&full_path, content).await {
-        Ok(_) => ToolResult {
-            success: true,
-            output: format!("Successfully wrote {} bytes to {}", content.len(), path),
-            error: None,
-            metadata: Some(json!({
-                "path": path,
-                "filename": std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(""),
-                "extension": extension,
-                "size": content.len(),
-                "content_preview": if content.len() > 500 { &content[..500] } else { content }
-            })),
-        },
+        Ok(_) => {
+            let content_preview = content_preview_for_metadata(content);
+            ToolResult {
+                success: true,
+                output: format!("Successfully wrote {} bytes to {}", content.len(), path),
+                error: None,
+                metadata: Some(json!({
+                    "path": path,
+                    "filename": std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(""),
+                    "extension": extension,
+                    "size": content.len(),
+                    "content_preview": content_preview
+                })),
+            }
+        }
         Err(e) => ToolResult::error(format!("Failed to write file: {e}")),
+    }
+}
+
+fn content_preview_for_metadata(content: &str) -> String {
+    const MAX_PREVIEW_CHARS: usize = 500;
+
+    if content.chars().count() > MAX_PREVIEW_CHARS {
+        content.chars().take(MAX_PREVIEW_CHARS).collect()
+    } else {
+        content.to_string()
     }
 }
 
@@ -356,5 +369,44 @@ pub async fn apply_patch(cwd: &Path, args: Value) -> ToolResult {
             metadata: None,
         },
         Err(e) => ToolResult::error(format!("Patch failed: {e}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn write_file_content_preview_truncates_on_utf8_boundary_without_panic() {
+        let temp = std::env::temp_dir().join(format!("cortex-test-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&temp)
+            .await
+            .expect("create temp dir");
+        let content = format!("{}{}b", "a".repeat(499), "é");
+
+        let result = write_file(
+            &temp,
+            json!({
+                "file_path": "utf8.txt",
+                "content": content,
+            }),
+        )
+        .await;
+
+        assert!(result.success);
+        let preview = result
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("content_preview"))
+            .and_then(serde_json::Value::as_str)
+            .expect("content preview");
+
+        assert_eq!(preview.chars().count(), 500);
+        assert!(preview.ends_with('é'));
+        assert!(!preview.ends_with('b'));
+
+        let _ = tokio::fs::remove_dir_all(&temp).await;
     }
 }
