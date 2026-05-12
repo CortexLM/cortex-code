@@ -72,4 +72,6 @@ if-addrs = "0.13"
 gethostname = "0.5"
 
 [dev-dependencies]
+serial_test = { workspace = true }
+tempfile = { workspace = true }
 tokio-test = { workspace = true }
