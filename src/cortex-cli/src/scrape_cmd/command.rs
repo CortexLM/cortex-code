@@ -306,6 +306,7 @@ impl ScrapeCommand {
             // Parse and convert HTML
             self.process_html(&body, format)?
         };
+        let output = ensure_trailing_newline(output);
 
         // Write output
         match &self.output {
@@ -372,4 +373,11 @@ impl ScrapeCommand {
 
         Ok(output)
     }
+}
+
+pub(super) fn ensure_trailing_newline(mut output: String) -> String {
+    if !output.is_empty() && !output.ends_with('\n') {
+        output.push('\n');
+    }
+    output
 }
