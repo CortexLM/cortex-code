@@ -116,9 +116,9 @@ fn validate_session_id(session_id: &str) -> Result<()> {
 
 /// Get the lock file path.
 fn get_lock_file_path() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".cortex").join("session_locks.json"))
-        .unwrap_or_else(|| PathBuf::from(".cortex/session_locks.json"))
+    cortex_engine::config::find_cortex_home()
+        .unwrap_or_else(|_| PathBuf::from(".cortex"))
+        .join("session_locks.json")
 }
 
 /// Load the lock file.
@@ -357,6 +357,50 @@ async fn run_check(args: LockCheckArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+    use std::env;
+    use std::ffi::{OsStr, OsString};
+    use tempfile::TempDir;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: This serial test guard mutates process environment in a
+            // #[serial] test and restores the original value on drop.
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: This serial test guard mutates process environment in a
+            // #[serial] test and restores the original value on drop.
+            unsafe {
+                env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: This serial test guard restores the process environment
+            // to the value captured before the test mutation.
+            unsafe {
+                match &self.original {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_lock_entry_serialization_with_reason() {
@@ -507,5 +551,16 @@ mod tests {
         // Path should include .cortex directory
         let path_str = path.to_string_lossy();
         assert!(path_str.contains(".cortex"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_lock_file_path_uses_cortex_home() {
+        let temp_dir = TempDir::new().unwrap();
+        let cortex_home = temp_dir.path().join("custom-cortex-home");
+        let _config_dir = EnvVarGuard::remove("CORTEX_CONFIG_DIR");
+        let _cortex_home = EnvVarGuard::set("CORTEX_HOME", &cortex_home);
+
+        assert_eq!(get_lock_file_path(), cortex_home.join("session_locks.json"));
     }
 }
