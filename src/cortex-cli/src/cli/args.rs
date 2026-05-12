@@ -551,12 +551,25 @@ pub struct LogoutCommand {
 #[derive(Args)]
 pub struct CompletionCommand {
     /// Shell to generate completions for.
-    #[arg(value_enum)]
+    #[arg(value_parser = parse_completion_shell, value_name = "SHELL")]
     pub shell: Option<clap_complete::Shell>,
 
     /// Install completions to your shell configuration file.
     #[arg(long = "install")]
     pub install: bool,
+}
+
+fn parse_completion_shell(shell: &str) -> Result<clap_complete::Shell, String> {
+    match shell.to_lowercase().as_str() {
+        "bash" => Ok(clap_complete::Shell::Bash),
+        "zsh" => Ok(clap_complete::Shell::Zsh),
+        "fish" => Ok(clap_complete::Shell::Fish),
+        "powershell" | "pwsh" => Ok(clap_complete::Shell::PowerShell),
+        "elvish" => Ok(clap_complete::Shell::Elvish),
+        _ => Err(format!(
+            "invalid shell '{shell}'. Expected one of: bash, zsh, fish, powershell, pwsh, elvish"
+        )),
+    }
 }
 
 /// Init command - initialize AGENTS.md.
@@ -1752,6 +1765,27 @@ mod tests {
         } else {
             panic!("Expected Completion command");
         }
+    }
+
+    #[test]
+    fn test_completion_command_pwsh_alias() {
+        let cli = Cli::try_parse_from(["cortex", "completion", "pwsh"])
+            .expect("should parse completion pwsh");
+        if let Some(Commands::Completion(completion)) = cli.command {
+            assert_eq!(completion.shell, Some(clap_complete::Shell::PowerShell));
+        } else {
+            panic!("Expected Completion command");
+        }
+    }
+
+    #[test]
+    fn test_completion_command_rejects_unknown_shell() {
+        let err = Cli::try_parse_from(["cortex", "completion", "tcsh"])
+            .expect_err("should reject unsupported completion shell");
+        assert!(
+            err.to_string().contains("Expected one of"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]
