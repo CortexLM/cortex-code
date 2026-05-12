@@ -94,6 +94,43 @@ impl Default for WebSearchHandler {
     }
 }
 
+fn build_duckduckgo_search_url(args: &WebQueryArgs) -> String {
+    let query = build_domain_filtered_query(args);
+    let mut url = format!(
+        "https://api.duckduckgo.com/?q={}&format=json&no_redirect=1&no_html=1&skip_disambig=1",
+        urlencoding::encode(&query)
+    );
+
+    if args.include_text {
+        url.push_str("&t=cortex");
+    }
+
+    url
+}
+
+fn build_domain_filtered_query(args: &WebQueryArgs) -> String {
+    let mut query_parts = vec![args.query.clone()];
+
+    if let Some(domains) = &args.include_domains {
+        query_parts.extend(site_filters(domains, "site:"));
+    }
+
+    if let Some(domains) = &args.exclude_domains {
+        query_parts.extend(site_filters(domains, "-site:"));
+    }
+
+    query_parts.join(" ")
+}
+
+fn site_filters(domains: &[String], prefix: &str) -> Vec<String> {
+    domains
+        .iter()
+        .map(|domain| domain.trim())
+        .filter(|domain| !domain.is_empty())
+        .map(move |domain| format!("{prefix}{domain}"))
+        .collect()
+}
+
 #[async_trait]
 impl ToolHandler for WebSearchHandler {
     fn name(&self) -> &str {
@@ -110,16 +147,7 @@ impl ToolHandler for WebSearchHandler {
             ));
         }
 
-        // Build DuckDuckGo Instant Answer API URL with optional parameters
-        let mut url = format!(
-            "https://api.duckduckgo.com/?q={}&format=json&no_redirect=1&no_html=1&skip_disambig=1",
-            urlencoding::encode(&args.query)
-        );
-
-        // Add include_text parameter if requested
-        if args.include_text {
-            url.push_str("&t=cortex");
-        }
+        let url = build_duckduckgo_search_url(&args);
 
         let response = match self.client.get(&url).send().await {
             Ok(resp) => resp,
@@ -258,5 +286,39 @@ mod tests {
         assert!(result.is_ok());
         let tool_result = result.unwrap();
         assert!(!tool_result.success);
+    }
+
+    #[test]
+    fn include_domains_are_added_as_site_filters_to_search_url() {
+        let args = WebQueryArgs {
+            query: "rust async".to_string(),
+            search_type: default_search_type(),
+            category: None,
+            num_results: default_num_results(),
+            include_domains: Some(vec!["docs.rs".to_string()]),
+            exclude_domains: None,
+            include_text: false,
+        };
+
+        let url = build_duckduckgo_search_url(&args);
+
+        assert!(url.contains("q=rust+async+site%3Adocs.rs"));
+    }
+
+    #[test]
+    fn exclude_domains_are_added_as_negative_site_filters_to_search_url() {
+        let args = WebQueryArgs {
+            query: "rust async".to_string(),
+            search_type: default_search_type(),
+            category: None,
+            num_results: default_num_results(),
+            include_domains: None,
+            exclude_domains: Some(vec!["medium.com".to_string(), "example.com".to_string()]),
+            include_text: false,
+        };
+
+        let url = build_duckduckgo_search_url(&args);
+
+        assert!(url.contains("q=rust+async+-site%3Amedium.com+-site%3Aexample.com"));
     }
 }
