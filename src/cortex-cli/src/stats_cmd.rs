@@ -218,7 +218,7 @@ fn get_model_pricing(model: &str) -> ModelPricing {
 
     // Fall back to default pricing (may be outdated - users can override via CORTEX_PRICING_*)
     // Pricing per 1M tokens (as of late 2024/early 2025 - may change)
-    match model {
+    match model_lower.as_str() {
         // Anthropic
         m if m.contains("claude-opus-4") || m.contains("opus-4") => ModelPricing {
             input_per_million: 15.0,
@@ -733,6 +733,14 @@ mod tests {
         // GPT-4o: $2.50/$10 per 1M
         let cost = calculate_cost("gpt-4o", 1_000_000, 1_000_000);
         assert!((cost - 12.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_calculate_cost_is_case_insensitive_for_builtin_pricing() {
+        let lowercase_cost = calculate_cost("gpt-4o", 1_000_000, 1_000_000);
+        let uppercase_cost = calculate_cost("GPT-4O", 1_000_000, 1_000_000);
+
+        assert!((uppercase_cost - lowercase_cost).abs() < f64::EPSILON);
     }
 
     #[test]
