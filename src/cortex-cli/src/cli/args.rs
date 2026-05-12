@@ -311,6 +311,11 @@ pub enum Commands {
     #[command(next_help_heading = categories::SESSION)]
     Delete(DeleteCommand),
 
+    /// View prompt history from past sessions
+    #[command(display_order = 15)]
+    #[command(next_help_heading = categories::SESSION)]
+    History(HistoryCommand),
+
     // ========================================================================
     // 🔐 Authentication (order 20-29)
     // ========================================================================
@@ -469,10 +474,6 @@ pub enum Commands {
     /// Discover Cortex servers on the local network
     #[command(hide = true)]
     Servers(ServersCommand),
-
-    /// View prompt history from past sessions
-    #[command(hide = true)]
-    History(HistoryCommand),
 
     /// Manage workspace/project settings
     #[command(visible_alias = "project", hide = true)]
@@ -857,6 +858,7 @@ pub struct HistoryClearArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
     use clap::Parser;
 
     // ==========================================================================
@@ -1780,6 +1782,15 @@ mod tests {
         } else {
             panic!("Expected History command");
         }
+    }
+
+    #[test]
+    fn test_history_command_visible_in_help() {
+        let help = Cli::command().render_long_help().to_string();
+        assert!(
+            help.contains("history"),
+            "top-level help should list the history command"
+        );
     }
 
     #[test]
