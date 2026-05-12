@@ -35,7 +35,7 @@ pub const AFTER_HELP: &str = color_print::cstr!(
     <green,bold>cortex resume --last</>           Continue most recent session
 
 <cyan,bold>🌍 ENVIRONMENT VARIABLES</>
-    <yellow>CORTEX_HOME</>          Override config directory (default: ~/.config/cortex)
+    <yellow>CORTEX_HOME</>          Override Cortex home directory (default: ~/.cortex)
     <yellow>CORTEX_API_KEY</>       API key (alternative to --with-api-key)
     <yellow>CORTEX_MODEL</>         Default model (alternative to --model)
     <yellow>CORTEX_LOG_LEVEL</>     Log verbosity (error, warn, info, debug, trace)
@@ -43,9 +43,9 @@ pub const AFTER_HELP: &str = color_print::cstr!(
     <yellow>VISUAL</>/<yellow>EDITOR</>        Editor for /edit command
 
 <cyan,bold>📁 PATHS</>
-    <dim>Config</>      ~/.config/cortex/config.toml
-    <dim>Sessions</>    ~/.local/share/cortex/sessions/
-    <dim>Logs</>        ~/.cache/cortex/logs/
+    <dim>Config</>      ~/.cortex/config.toml
+    <dim>Sessions</>    ~/.cortex/sessions/
+    <dim>Logs</>        ~/.cortex/logs/
     <dim>Agents</>      ~/.cortex/agents/ (personal), .cortex/agents/ (project)
 
 <cyan,bold>🔗 LEARN MORE</>
