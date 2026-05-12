@@ -54,10 +54,8 @@ pub async fn run_wait(args: WaitArgs) -> Result<()> {
 
         while start.elapsed() < timeout {
             match client.get(&args.server_url).send().await {
-                Ok(response)
-                    if response.status().is_success() || response.status().is_client_error() =>
-                {
-                    // Server is responding (even 4xx means it's up)
+                Ok(response) if is_server_ready_status(response.status()) => {
+                    // The readiness endpoint must respond successfully.
                     success = true;
                     break;
                 }
@@ -149,4 +147,8 @@ pub async fn run_wait(args: WaitArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn is_server_ready_status(status: reqwest::StatusCode) -> bool {
+    status.is_success()
 }
