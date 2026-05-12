@@ -3,10 +3,9 @@
 #[cfg(test)]
 mod tests {
     use crate::agent_cmd::cli::{CopyArgs, ExportArgs};
-    use crate::agent_cmd::loader::{
-        load_builtin_agents, parse_frontmatter, read_file_with_encoding,
-    };
+    use crate::agent_cmd::loader::{load_builtin_agents, parse_frontmatter};
     use crate::agent_cmd::types::AgentMode;
+    use crate::utils::file::read_file_with_encoding;
 
     #[test]
     fn test_read_file_with_utf8() {

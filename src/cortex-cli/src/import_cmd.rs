@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::styled_output::{print_info, print_success, print_warning};
+use cortex_engine::config::find_cortex_home;
 use cortex_engine::rollout::recorder::{RolloutRecorder, SessionMeta};
 use cortex_engine::rollout::{SESSIONS_SUBDIR, get_rollout_path};
 use cortex_protocol::{
@@ -45,9 +46,7 @@ impl ImportCommand {
             bail!("Error: Source path cannot be empty\n\nUsage: cortex import <FILE_OR_URL>");
         }
 
-        let cortex_home = dirs::home_dir()
-            .map(|h| h.join(".cortex"))
-            .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+        let cortex_home = get_cortex_home()?;
 
         // Read the export data
         let (json_content, is_from_url) = if self.source == "-" {
@@ -234,6 +233,11 @@ impl ImportCommand {
 
         Ok(())
     }
+}
+
+/// Get the cortex home directory.
+fn get_cortex_home() -> Result<PathBuf> {
+    find_cortex_home().context("Could not determine Cortex home directory")
 }
 
 /// Fetch content from a URL.
@@ -494,6 +498,58 @@ fn message_to_event(message: &ExportMessage, turn_id: &mut u64, cwd: &Path) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+    use std::env;
+    use std::ffi::{OsStr, OsString};
+    use tempfile::TempDir;
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: impl AsRef<OsStr>) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = env::var_os(key);
+            // SAFETY: These tests are serialized and restore the environment on drop.
+            unsafe {
+                env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: These tests are serialized and restore the environment before returning.
+            unsafe {
+                match &self.original {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_cortex_home_uses_cortex_home_env() {
+        let temp_dir = TempDir::new().unwrap();
+        let cortex_home = temp_dir.path().join("custom-cortex-home");
+        let _config_dir = EnvVarGuard::remove("CORTEX_CONFIG_DIR");
+        let _cortex_home = EnvVarGuard::set("CORTEX_HOME", &cortex_home);
+
+        assert_eq!(get_cortex_home().unwrap(), cortex_home);
+    }
 
     #[test]
     fn test_parse_export_json() {
