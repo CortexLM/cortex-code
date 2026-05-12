@@ -96,6 +96,7 @@ pub const HELP_TEMPLATE: &str = color_print::cstr!(
     <green,bold>export</>      Export a session to JSON format
     <green,bold>import</>      Import a session from JSON file or URL
     <green,bold>delete</>      Delete a session
+    <green,bold>history</>     View prompt history from past sessions
 
 <cyan,bold>🔐 Authentication:</>
     <green,bold>login</>       Authenticate with Cortex API
