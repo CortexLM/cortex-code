@@ -81,6 +81,10 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
+fn log_file_label(count: usize) -> &'static str {
+    if count == 1 { "log file" } else { "log files" }
+}
+
 impl LogsCli {
     /// Run the logs command.
     pub async fn run(self) -> Result<()> {
@@ -344,8 +348,9 @@ impl LogsCli {
 
         if cleared > 0 {
             println!(
-                "Cleared {} log file(s) ({}) older than {} days.",
+                "Cleared {} {} ({}) older than {} days.",
                 cleared,
+                log_file_label(cleared),
                 format_size(cleared_bytes),
                 self.keep_days
             );
@@ -404,6 +409,13 @@ mod tests {
         assert_eq!(format_size(MB - 1), "1024.00 KB");
         // Exactly 1 MB
         assert_eq!(format_size(MB), "1.00 MB");
+    }
+
+    #[test]
+    fn test_log_file_label() {
+        assert_eq!(log_file_label(0), "log files");
+        assert_eq!(log_file_label(1), "log file");
+        assert_eq!(log_file_label(2), "log files");
     }
 
     // =========================================================================
