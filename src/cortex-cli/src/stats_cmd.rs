@@ -549,6 +549,9 @@ fn parse_session_file(path: &PathBuf) -> Result<SessionData> {
         if session_input > 0 || session_output > 0 {
             data.input_tokens = session_input;
             data.output_tokens = session_output;
+            if data.message_count == 0 {
+                data.message_count = 1;
+            }
         }
     }
 
@@ -700,6 +703,7 @@ fn format_cost(cost: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn test_format_number() {
@@ -754,5 +758,33 @@ mod tests {
         // Invalid: not a number
         let err = validate_days_range("abc").unwrap_err();
         assert!(err.contains("not a valid number"));
+    }
+
+    #[test]
+    fn test_parse_session_file_counts_usage_only_session_as_one_message() {
+        let path = std::env::temp_dir().join(format!(
+            "cortex-stats-usage-only-{}.json",
+            std::process::id()
+        ));
+
+        fs::write(
+            &path,
+            r#"{
+                "created_at": "2026-04-09T00:00:00Z",
+                "model": "gpt-4o",
+                "usage": {
+                    "input_tokens": 1000000,
+                    "output_tokens": 1000000
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let data = parse_session_file(&path).unwrap();
+        let _ = fs::remove_file(&path);
+
+        assert_eq!(data.message_count, 1);
+        assert_eq!(data.input_tokens, 1000000);
+        assert_eq!(data.output_tokens, 1000000);
     }
 }
