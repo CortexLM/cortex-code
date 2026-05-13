@@ -57,10 +57,12 @@ pub async fn run_with_shutdown<F>(config: ServerConfig, shutdown: F) -> anyhow::
 where
     F: std::future::Future<Output = ()> + Send + 'static,
 {
+    let addr: SocketAddr = config.listen_addr.parse()?;
+
     // Warn if authentication is disabled
     if !config.auth.enabled {
         warn!("Server running without authentication!");
-        warn!("Anyone on the network can access this server.");
+        warn!("{}", unauthenticated_access_warning(addr));
         warn!("Use --auth to enable authentication.");
     }
 
@@ -68,7 +70,6 @@ where
     let state_for_cleanup = Arc::clone(&state);
     let app = create_router_with_state(state);
 
-    let addr: SocketAddr = config.listen_addr.parse()?;
     info!("Starting Cortex server on {}", addr);
 
     // Start mDNS publisher if enabled
@@ -121,6 +122,14 @@ where
     Ok(())
 }
 
+fn unauthenticated_access_warning(addr: SocketAddr) -> &'static str {
+    if addr.ip().is_loopback() {
+        "Only local processes can access this server."
+    } else {
+        "Anyone on the network can access this server."
+    }
+}
+
 /// Create the application router.
 pub fn create_router(state: AppState) -> Router {
     create_router_with_state(Arc::new(state))
@@ -142,4 +151,28 @@ pub fn create_router_with_state(state: Arc<AppState>) -> Router {
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::unauthenticated_access_warning;
+    use std::net::SocketAddr;
+
+    #[test]
+    fn loopback_bind_uses_local_only_warning() {
+        let addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
+        assert_eq!(
+            unauthenticated_access_warning(addr),
+            "Only local processes can access this server."
+        );
+    }
+
+    #[test]
+    fn non_loopback_bind_uses_network_warning() {
+        let addr: SocketAddr = "0.0.0.0:3000".parse().unwrap();
+        assert_eq!(
+            unauthenticated_access_warning(addr),
+            "Anyone on the network can access this server."
+        );
+    }
 }
