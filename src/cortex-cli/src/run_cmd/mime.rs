@@ -34,6 +34,7 @@ pub fn mime_type_from_extension(path: &Path) -> String {
         "ps1" => "text/x-powershell",
         "yaml" | "yml" => "text/yaml",
         "toml" => "text/toml",
+        "graphql" | "gql" => "application/graphql",
 
         // Images
         "png" => "image/png",
@@ -74,6 +75,14 @@ mod tests {
         assert_eq!(
             mime_type_from_extension(&PathBuf::from("test.json")),
             "application/json"
+        );
+        assert_eq!(
+            mime_type_from_extension(&PathBuf::from("schema.graphql")),
+            "application/graphql"
+        );
+        assert_eq!(
+            mime_type_from_extension(&PathBuf::from("query.gql")),
+            "application/graphql"
         );
         assert_eq!(
             mime_type_from_extension(&PathBuf::from("test.png")),
