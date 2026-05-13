@@ -9,6 +9,9 @@ use ratatui::widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table};
 use cortex_agents::background::{AgentStatus, RunningAgentInfo};
 use cortex_common::{format_duration, truncate_first_line, truncate_id_default};
 
+const EMPTY_TASKS_MESSAGE: &str =
+    "No background tasks are running.\n\nPress Ctrl+B to run the current prompt in background.";
+
 /// View for displaying background tasks/agents.
 pub struct TasksView {
     /// List of agents to display.
@@ -95,7 +98,7 @@ impl TasksView {
 
         if self.agents.is_empty() {
             // Show empty state
-            let empty_text = Paragraph::new("No background tasks running.\n\nPress Ctrl+B to run the current prompt in background.")
+            let empty_text = Paragraph::new(EMPTY_TASKS_MESSAGE)
                 .style(Style::default().fg(Color::DarkGray))
                 .alignment(Alignment::Center);
 
@@ -225,6 +228,11 @@ mod tests {
         let view = TasksView::new();
         assert!(view.is_empty());
         assert_eq!(view.agent_count(), 0);
+    }
+
+    #[test]
+    fn test_empty_tasks_message_is_grammatical() {
+        assert!(EMPTY_TASKS_MESSAGE.starts_with("No background tasks are running."));
     }
 
     #[test]
