@@ -36,8 +36,12 @@ pub mod websocket;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{
+    Router,
+    middleware::{from_fn, from_fn_with_state},
+};
 use tokio::net::TcpListener;
+use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{info, warn};
@@ -136,9 +140,21 @@ pub fn create_router_with_state(state: Arc<AppState>) -> Router {
         .merge(streaming::routes())
         .merge(share::routes())
         .merge(admin::routes());
+    let app_middleware = ServiceBuilder::new()
+        .layer(from_fn_with_state(
+            Arc::clone(&state),
+            middleware::rate_limit_middleware,
+        ))
+        .layer(from_fn_with_state(
+            Arc::clone(&state),
+            middleware::timeout_middleware,
+        ))
+        .layer(from_fn(middleware::security_headers_middleware))
+        .layer(from_fn(middleware::content_type_middleware));
 
     Router::new()
         .nest("/api/v1", api_routes)
+        .layer(app_middleware)
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state)
