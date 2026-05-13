@@ -142,6 +142,12 @@ impl fmt::Display for ExecError {
             write!(f, " (exit code: {code})")?;
         }
 
+        if let Some(ref stderr) = self.stderr {
+            if !stderr.is_empty() {
+                write!(f, " (stderr: {stderr})")?;
+            }
+        }
+
         Ok(())
     }
 }
@@ -230,6 +236,22 @@ mod tests {
         let err = ExecError::timeout("sleep 100", 10);
         let display = format!("{}", err);
         assert!(display.contains("timed out"));
+    }
+
+    #[test]
+    fn test_error_display_includes_stderr() {
+        let err = ExecError::exit("bash -c 'exit 1'", 1, Some("error-detail".to_string()));
+        let display = format!("{}", err);
+
+        assert!(display.contains("stderr: error-detail"));
+    }
+
+    #[test]
+    fn test_error_display_omits_empty_stderr() {
+        let err = ExecError::exit("bash -c 'exit 1'", 1, Some(String::new()));
+        let display = format!("{}", err);
+
+        assert!(!display.contains("stderr:"));
     }
 
     #[test]
