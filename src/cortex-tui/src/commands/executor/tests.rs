@@ -257,6 +257,18 @@ fn test_async_commands() {
 }
 
 #[test]
+fn test_mcp_remove_commands_open_mcp_manager() {
+    let executor = CommandExecutor::new();
+
+    for command in ["/mcp-remove", "/mcp-rm"] {
+        assert!(matches!(
+            executor.execute_str(command),
+            CommandResult::OpenModal(ModalType::McpManager)
+        ));
+    }
+}
+
+#[test]
 fn test_add_command() {
     let executor = CommandExecutor::new();
 

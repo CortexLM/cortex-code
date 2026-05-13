@@ -591,6 +591,15 @@ pub fn register_builtin_commands(registry: &mut CommandRegistry) {
     ));
 
     registry.register(CommandDef::new(
+        "mcp-remove",
+        &["mcp-rm"],
+        "Remove MCP servers",
+        "/mcp-remove",
+        CommandCategory::Mcp,
+        false,
+    ));
+
+    registry.register(CommandDef::new(
         "mcp-reload",
         &[],
         "Reload MCP server configuration",

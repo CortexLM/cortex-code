@@ -195,6 +195,8 @@ mod tests {
         assert!(registry.exists("mcp"));
         assert!(registry.exists("mcp-tools"));
         assert!(registry.exists("mcp-auth"));
+        assert!(registry.exists("mcp-remove"));
+        assert!(registry.exists("mcp-rm"));
         assert!(registry.exists("mcp-reload"));
 
         // Auth
