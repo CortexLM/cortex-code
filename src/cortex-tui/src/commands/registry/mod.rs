@@ -193,6 +193,7 @@ mod tests {
 
         // MCP
         assert!(registry.exists("mcp"));
+        assert!(registry.exists("mcp-list"));
         assert!(registry.exists("mcp-tools"));
         assert!(registry.exists("mcp-auth"));
         assert!(registry.exists("mcp-reload"));

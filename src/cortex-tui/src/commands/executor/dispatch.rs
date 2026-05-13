@@ -96,6 +96,7 @@ impl CommandExecutor {
             // ============ MCP ============
             // All MCP commands redirect to the interactive panel
             "mcp" => self.cmd_mcp(cmd),
+            "mcp-list" => CommandResult::OpenModal(ModalType::McpManager),
             "mcp-tools" | "tools" | "lt" => CommandResult::OpenModal(ModalType::McpManager),
             "mcp-auth" | "auth" => CommandResult::OpenModal(ModalType::McpManager),
             "mcp-reload" => CommandResult::OpenModal(ModalType::McpManager),

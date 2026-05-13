@@ -257,6 +257,16 @@ fn test_async_commands() {
 }
 
 #[test]
+fn test_mcp_list_opens_mcp_manager() {
+    let executor = CommandExecutor::new();
+
+    assert!(matches!(
+        executor.execute_str("/mcp-list"),
+        CommandResult::OpenModal(ModalType::McpManager)
+    ));
+}
+
+#[test]
 fn test_add_command() {
     let executor = CommandExecutor::new();
 
