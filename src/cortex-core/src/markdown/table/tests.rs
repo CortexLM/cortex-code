@@ -152,6 +152,29 @@ mod tests {
     }
 
     #[test]
+    fn test_column_width_distribution_preserves_available_space() {
+        let mut builder = TableBuilder::new();
+        builder.start_header();
+        builder.add_cell("A A A".to_string());
+        builder.add_cell("B B B".to_string());
+        builder.add_cell("C C C".to_string());
+        builder.end_header();
+
+        builder.start_row();
+        builder.add_cell("aa bb cc".to_string());
+        builder.add_cell("dd ee ff".to_string());
+        builder.add_cell("gg hh ii".to_string());
+        builder.end_row();
+
+        let mut table = builder.build();
+        let max_width = 21;
+        table.calculate_column_widths(max_width);
+
+        // Three columns have 4 border chars and 6 padding chars, leaving 11 content chars.
+        assert_eq!(table.column_widths.iter().sum::<usize>(), 11);
+    }
+
+    #[test]
     fn test_missing_cells_in_rows() {
         let mut builder = TableBuilder::new();
         builder.start_header();
