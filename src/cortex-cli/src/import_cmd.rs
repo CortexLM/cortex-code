@@ -427,7 +427,12 @@ fn validate_export_messages(messages: &[ExportMessage]) -> Result<()> {
 
 /// Convert an export message to a protocol event.
 fn message_to_event(message: &ExportMessage, turn_id: &mut u64, cwd: &Path) -> Result<Event> {
-    let event_msg = match message.role.as_str() {
+    let role = message.role.trim();
+    if role.is_empty() {
+        bail!("Invalid message role: role cannot be empty or whitespace-only");
+    }
+
+    let event_msg = match role {
         "user" => {
             *turn_id += 1;
             EventMsg::UserMessage(UserMessageEvent {
@@ -474,15 +479,10 @@ fn message_to_event(message: &ExportMessage, turn_id: &mut u64, cwd: &Path) -> R
                 finish_reason: None,
             })
         }
-        other => {
-            // Unknown role, treat as assistant message
-            EventMsg::AgentMessage(AgentMessageEvent {
-                id: None,
-                parent_id: None,
-                message: format!("[{other}] {}", message.content),
-                finish_reason: None,
-            })
-        }
+        other => bail!(
+            "Invalid message role '{}': expected one of user, assistant, tool, or system",
+            other
+        ),
     };
 
     Ok(Event {
@@ -543,6 +543,63 @@ mod tests {
 
         let event = message_to_event(&assistant_msg, &mut turn_id, &cwd).unwrap();
         assert!(matches!(event.msg, EventMsg::AgentMessage(_)));
+    }
+
+    #[test]
+    fn test_message_to_event_rejects_empty_role() {
+        let mut turn_id = 0u64;
+        let cwd = PathBuf::from("/tmp");
+        let msg = ExportMessage {
+            role: "".to_string(),
+            content: "hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+        };
+
+        let err = message_to_event(&msg, &mut turn_id, &cwd).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("role cannot be empty or whitespace-only")
+        );
+    }
+
+    #[test]
+    fn test_message_to_event_rejects_whitespace_only_role() {
+        let mut turn_id = 0u64;
+        let cwd = PathBuf::from("/tmp");
+        let msg = ExportMessage {
+            role: "   ".to_string(),
+            content: "hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+        };
+
+        let err = message_to_event(&msg, &mut turn_id, &cwd).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("role cannot be empty or whitespace-only")
+        );
+    }
+
+    #[test]
+    fn test_message_to_event_rejects_unknown_role() {
+        let mut turn_id = 0u64;
+        let cwd = PathBuf::from("/tmp");
+        let msg = ExportMessage {
+            role: "developer".to_string(),
+            content: "hello".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+        };
+
+        let err = message_to_event(&msg, &mut turn_id, &cwd).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("expected one of user, assistant, tool, or system")
+        );
     }
 
     #[tokio::test]
