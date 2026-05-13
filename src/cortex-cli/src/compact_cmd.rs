@@ -119,8 +119,8 @@ pub struct CompactConfigArgs {
     #[arg(long)]
     pub interval_hours: Option<u64>,
 
-    /// Set log retention period in days
-    #[arg(long)]
+    /// Set log retention period in days (1-3650)
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..=3650))]
     pub log_retention_days: Option<u32>,
 
     /// Output current config as JSON
@@ -1065,5 +1065,26 @@ mod tests {
             args.session_days, 0,
             "default session_days should be 0 (keep all)"
         );
+    }
+
+    #[test]
+    fn test_compact_config_log_retention_accepts_documented_range() {
+        let cli = CompactCli::try_parse_from(["compact", "config", "--log-retention-days", "3650"])
+            .expect("3650 days is the documented upper bound");
+
+        match cli.subcommand {
+            Some(CompactSubcommand::Config(args)) => {
+                assert_eq!(args.log_retention_days, Some(3650));
+            }
+            _ => panic!("expected compact config subcommand"),
+        }
+    }
+
+    #[test]
+    fn test_compact_config_log_retention_rejects_zero() {
+        let err = CompactCli::try_parse_from(["compact", "config", "--log-retention-days", "0"])
+            .expect_err("zero days is outside the documented 1-3650 range");
+
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
     }
 }
