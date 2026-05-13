@@ -672,7 +672,7 @@ pub enum ConfigSubcommand {
     Get(ConfigGetArgs),
     /// Set a configuration value
     Set(ConfigSetArgs),
-    /// Unset (remove) a configuration value
+    /// Unset (remove) a configuration key
     Unset(ConfigUnsetArgs),
 }
 
