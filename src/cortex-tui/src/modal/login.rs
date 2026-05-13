@@ -193,7 +193,8 @@ impl Modal for LoginModal {
         match &self.state {
             LoginState::Pending | LoginState::Polling => {
                 vec![
-                    ("Enter/c", "copy code"),
+                    ("Enter", "copy code"),
+                    ("c", "copy code"),
                     ("o", "open browser"),
                     ("Esc", "cancel"),
                 ]
@@ -257,7 +258,8 @@ impl LoginModal {
 
         // Action bar
         let bar = ActionBar::new()
-            .hint("Enter/c", "copy code")
+            .action('c', "Copy code")
+            .hint("Enter", "copy")
             .hint("o", "open browser")
             .hint("Esc", "cancel");
         bar.render(chunks[8], buf);
@@ -379,6 +381,21 @@ mod tests {
         let mut modal2 = LoginModal::new("url".to_string(), "code".to_string(), 300);
         modal2.set_failed("Connection error".to_string());
         assert!(matches!(modal2.state, LoginState::Failed(_)));
+    }
+
+    #[test]
+    fn test_pending_key_hints_split_copy_keys() {
+        let modal = LoginModal::new(
+            "https://example.com".to_string(),
+            "CODE123".to_string(),
+            600,
+        );
+
+        let hints = modal.key_hints();
+
+        assert!(hints.contains(&("Enter", "copy code")));
+        assert!(hints.contains(&("c", "copy code")));
+        assert!(!hints.iter().any(|(key, _)| *key == "Enter/c"));
     }
 
     #[test]
