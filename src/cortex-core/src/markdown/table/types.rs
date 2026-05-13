@@ -209,11 +209,35 @@ impl Table {
             self.column_widths = min_widths.clone();
 
             if pref_extra > 0 {
+                let mut allocated_total = 0;
+                let mut remainders = Vec::with_capacity(num_cols);
+
                 for i in 0..num_cols {
                     let col_extra = pref_widths[i].saturating_sub(min_widths[i]);
-                    let allocated =
-                        (col_extra as f64 / pref_extra as f64 * extra_space as f64) as usize;
+                    let weighted_extra = col_extra * extra_space;
+                    let allocated = weighted_extra / pref_extra;
+                    let remainder = weighted_extra % pref_extra;
+
                     self.column_widths[i] += allocated;
+                    allocated_total += allocated;
+
+                    if allocated < col_extra {
+                        remainders.push((i, remainder));
+                    }
+                }
+
+                let mut remaining = extra_space.saturating_sub(allocated_total);
+                remainders.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+                for (i, _) in remainders {
+                    if remaining == 0 {
+                        break;
+                    }
+
+                    if self.column_widths[i] < pref_widths[i] {
+                        self.column_widths[i] += 1;
+                        remaining -= 1;
+                    }
                 }
             }
         } else {
