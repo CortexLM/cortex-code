@@ -12,6 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+const DESCRIPTION_PREFIX: &str = "  Description: ";
+const DESCRIPTION_CONTINUATION_PREFIX: &str = "               ";
+const ALIAS_LIST_DESCRIPTION_PREFIX: &str = "      ";
+
 /// Alias CLI command.
 #[derive(Debug, Parser)]
 pub struct AliasCli {
@@ -137,6 +141,25 @@ fn save_aliases(config: &AliasConfig) -> Result<()> {
     Ok(())
 }
 
+fn format_multiline_prefixed_value(
+    first_prefix: &str,
+    continuation_prefix: &str,
+    value: &str,
+) -> String {
+    let mut lines = value.lines();
+    let Some(first_line) = lines.next() else {
+        return first_prefix.to_string();
+    };
+
+    let mut formatted = format!("{first_prefix}{first_line}");
+    for line in lines {
+        formatted.push('\n');
+        formatted.push_str(continuation_prefix);
+        formatted.push_str(line);
+    }
+    formatted
+}
+
 impl AliasCli {
     /// Run the alias command.
     pub async fn run(self) -> Result<()> {
@@ -172,7 +195,14 @@ async fn run_set(args: AliasSetArgs) -> Result<()> {
 
     println!("Alias '{}' set to: {}", args.name, args.command);
     if let Some(desc) = &args.description {
-        println!("  Description: {}", desc);
+        println!(
+            "{}",
+            format_multiline_prefixed_value(
+                DESCRIPTION_PREFIX,
+                DESCRIPTION_CONTINUATION_PREFIX,
+                desc
+            )
+        );
     }
 
     Ok(())
@@ -203,7 +233,14 @@ async fn run_list(args: AliasListArgs) -> Result<()> {
     for alias in aliases {
         println!("  {} = {}", alias.name, alias.command);
         if let Some(desc) = &alias.description {
-            println!("      {}", desc);
+            println!(
+                "{}",
+                format_multiline_prefixed_value(
+                    ALIAS_LIST_DESCRIPTION_PREFIX,
+                    ALIAS_LIST_DESCRIPTION_PREFIX,
+                    desc
+                )
+            );
         }
     }
 
@@ -265,7 +302,14 @@ async fn run_show(args: AliasShowArgs) -> Result<()> {
     println!("{}", "-".repeat(40));
     println!("  Command: {}", alias.command);
     if let Some(desc) = &alias.description {
-        println!("  Description: {}", desc);
+        println!(
+            "{}",
+            format_multiline_prefixed_value(
+                DESCRIPTION_PREFIX,
+                DESCRIPTION_CONTINUATION_PREFIX,
+                desc
+            )
+        );
     }
 
     Ok(())
@@ -614,6 +658,28 @@ command = "list"
         assert_eq!(
             parsed.description,
             Some("Command with special chars: <>&".to_string())
+        );
+    }
+
+    #[test]
+    fn multiline_description_lines_keep_list_indent() {
+        let formatted =
+            format_multiline_prefixed_value("      ", "      ", "First line\nSecond line");
+
+        assert_eq!(formatted, "      First line\n      Second line");
+    }
+
+    #[test]
+    fn multiline_description_lines_align_after_description_label() {
+        let formatted = format_multiline_prefixed_value(
+            "  Description: ",
+            "               ",
+            "First line\nSecond line",
+        );
+
+        assert_eq!(
+            formatted,
+            "  Description: First line\n               Second line"
         );
     }
 }
