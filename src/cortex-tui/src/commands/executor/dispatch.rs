@@ -98,6 +98,7 @@ impl CommandExecutor {
             "mcp" => self.cmd_mcp(cmd),
             "mcp-tools" | "tools" | "lt" => CommandResult::OpenModal(ModalType::McpManager),
             "mcp-auth" | "auth" => CommandResult::OpenModal(ModalType::McpManager),
+            "mcp-remove" | "mcp-rm" => CommandResult::OpenModal(ModalType::McpManager),
             "mcp-reload" => CommandResult::OpenModal(ModalType::McpManager),
             "mcp-logs" => CommandResult::OpenModal(ModalType::McpManager),
 
