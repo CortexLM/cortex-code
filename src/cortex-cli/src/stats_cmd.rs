@@ -330,7 +330,7 @@ fn infer_provider(model: &str) -> String {
 }
 
 /// Collect statistics from session files.
-async fn collect_stats(sessions_dir: &PathBuf, cli: &StatsCli) -> Result<UsageStats> {
+pub(super) async fn collect_stats(sessions_dir: &PathBuf, cli: &StatsCli) -> Result<UsageStats> {
     let mut stats = UsageStats::default();
 
     // Calculate date range
@@ -363,10 +363,15 @@ async fn collect_stats(sessions_dir: &PathBuf, cli: &StatsCli) -> Result<UsageSt
         // Try to parse the session
         if let Ok(session_data) = parse_session_file(&path) {
             // Check if session is within date range
-            if let Some(ref timestamp) = session_data.timestamp
-                && let Ok(session_date) = chrono::DateTime::parse_from_rfc3339(timestamp)
-                && session_date < start_date
-            {
+            let Some(session_date) = session_data
+                .timestamp
+                .as_deref()
+                .and_then(|timestamp| chrono::DateTime::parse_from_rfc3339(timestamp).ok())
+            else {
+                continue;
+            };
+
+            if session_date < start_date {
                 continue;
             }
 
