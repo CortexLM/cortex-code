@@ -132,7 +132,7 @@ pub async fn run_login_status(config_overrides: CliConfigOverrides) -> ! {
 
     // Check environment variables first (CORTEX_AUTH_TOKEN and CORTEX_API_KEY)
     if let Ok(token) = std::env::var("CORTEX_AUTH_TOKEN")
-        && !token.is_empty()
+        && !token.trim().is_empty()
     {
         print_success(&format!(
             "Authenticated via CORTEX_AUTH_TOKEN environment variable: {}",
@@ -142,7 +142,7 @@ pub async fn run_login_status(config_overrides: CliConfigOverrides) -> ! {
     }
 
     if let Ok(token) = std::env::var("CORTEX_API_KEY")
-        && !token.is_empty()
+        && !token.trim().is_empty()
     {
         print_success(&format!(
             "Authenticated via CORTEX_API_KEY environment variable: {}",

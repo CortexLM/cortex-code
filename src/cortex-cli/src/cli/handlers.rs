@@ -538,7 +538,7 @@ pub async fn run_whoami() -> Result<()> {
 
     // Check environment variables first
     if let Ok(token) = std::env::var("CORTEX_AUTH_TOKEN")
-        && !token.is_empty()
+        && !token.trim().is_empty()
     {
         println!(
             "Authenticated via CORTEX_AUTH_TOKEN: {}",
@@ -548,7 +548,7 @@ pub async fn run_whoami() -> Result<()> {
     }
 
     if let Ok(token) = std::env::var("CORTEX_API_KEY")
-        && !token.is_empty()
+        && !token.trim().is_empty()
     {
         println!(
             "Authenticated via CORTEX_API_KEY: {}",
