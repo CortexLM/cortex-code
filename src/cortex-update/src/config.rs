@@ -145,4 +145,65 @@ impl UpdateConfig {
     pub fn is_version_skipped(&self, version: &str) -> bool {
         self.skip_version.as_deref() == Some(version)
     }
+
+    /// Check if this version has already been surfaced to the user.
+    pub fn is_version_notified(&self, version: &str) -> bool {
+        self.last_notified_version.as_deref() == Some(version)
+    }
+
+    /// Persist the latest version that has already been surfaced to the user.
+    pub fn mark_version_notified(&mut self, version: &str) -> Result<(), std::io::Error> {
+        if self.is_version_notified(version) {
+            return Ok(());
+        }
+
+        self.last_notified_version = Some(version.to_string());
+        self.save()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+    use std::sync::Mutex;
+
+    static HOME_LOCK: Mutex<()> = Mutex::new(());
+
+    struct HomeGuard(Option<OsString>);
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            if let Some(original) = self.0.take() {
+                unsafe { std::env::set_var("HOME", original) };
+            } else {
+                unsafe { std::env::remove_var("HOME") };
+            }
+        }
+    }
+
+    #[test]
+    fn test_is_version_notified() {
+        let config = UpdateConfig {
+            last_notified_version: Some("0.9.0".to_string()),
+            ..UpdateConfig::default()
+        };
+
+        assert!(config.is_version_notified("0.9.0"));
+        assert!(!config.is_version_notified("0.9.1"));
+    }
+
+    #[test]
+    fn test_mark_version_notified_persists() {
+        let _lock = HOME_LOCK.lock().unwrap();
+        let _guard = HomeGuard(std::env::var_os("HOME"));
+        let temp_home = tempfile::tempdir().unwrap();
+        unsafe { std::env::set_var("HOME", temp_home.path()) };
+
+        let mut config = UpdateConfig::default();
+        config.mark_version_notified("1.2.3").unwrap();
+
+        let loaded = UpdateConfig::load();
+        assert_eq!(loaded.last_notified_version.as_deref(), Some("1.2.3"));
+    }
 }
