@@ -1,6 +1,6 @@
 //! Git operations endpoints.
 
-use std::process::Command;
+use tokio::process::Command;
 
 use axum::{Json, extract::Query};
 
@@ -17,7 +17,8 @@ use super::types::{
 pub async fn git_status(Query(query): Query<GitPathQuery>) -> AppResult<Json<GitStatusResponse>> {
     let output = Command::new("git")
         .args(["-C", &query.path, "status", "--porcelain=v2", "-b"])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -139,7 +140,8 @@ fn status_char_to_string(c: &str) -> String {
 pub async fn git_branch(Query(query): Query<GitPathQuery>) -> AppResult<Json<serde_json::Value>> {
     let output = Command::new("git")
         .args(["-C", &query.path, "branch", "--show-current"])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -155,7 +157,8 @@ pub async fn git_branches(Query(query): Query<GitPathQuery>) -> AppResult<Json<s
     // Get local branches with verbose info
     let output = Command::new("git")
         .args(["-C", &query.path, "branch", "-vv", "--format=%(HEAD)%(refname:short)|%(upstream:short)|%(upstream:track)|%(objectname:short)|%(subject)"])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -213,7 +216,8 @@ pub async fn git_branches(Query(query): Query<GitPathQuery>) -> AppResult<Json<s
                     "-r",
                     "--format=%(refname:short)|%(objectname:short)",
                 ])
-                .output();
+                .output()
+                .await;
 
             if let Ok(remote_output) = remote_output {
                 let remote_stdout = String::from_utf8_lossy(&remote_output.stdout);
@@ -274,7 +278,7 @@ pub async fn git_diff(Query(query): Query<GitDiffQuery>) -> AppResult<Json<serde
     args.push("--");
     args.push(&query.file);
 
-    let output = Command::new("git").args(&args).output();
+    let output = Command::new("git").args(&args).output().await;
 
     match output {
         Ok(output) => {
@@ -385,7 +389,8 @@ fn parse_diff_with_stats(diff: &str) -> (Vec<serde_json::Value>, usize, usize) {
 pub async fn git_blame(Query(query): Query<GitBlameQuery>) -> AppResult<Json<serde_json::Value>> {
     let output = Command::new("git")
         .args(["-C", &query.path, "blame", "--porcelain", &query.file])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -469,7 +474,8 @@ pub async fn git_log(Query(query): Query<GitLogQuery>) -> AppResult<Json<serde_j
             &format!("-{}", limit),
             "--format=%H|%h|%s|%an|%ae|%aI|%P|%D",
         ])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -548,7 +554,8 @@ pub async fn git_stage(Json(req): Json<GitStageRequest>) -> AppResult<Json<serde
     for file in &req.files {
         let _ = Command::new("git")
             .args(["-C", &req.path, "add", file])
-            .output();
+            .output()
+            .await;
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
@@ -559,7 +566,8 @@ pub async fn git_unstage(Json(req): Json<GitStageRequest>) -> AppResult<Json<ser
     for file in &req.files {
         let _ = Command::new("git")
             .args(["-C", &req.path, "restore", "--staged", file])
-            .output();
+            .output()
+            .await;
     }
 
     Ok(Json(serde_json::json!({ "success": true })))
@@ -569,7 +577,8 @@ pub async fn git_unstage(Json(req): Json<GitStageRequest>) -> AppResult<Json<ser
 pub async fn git_stage_all(Json(req): Json<GitPathRequest>) -> AppResult<Json<serde_json::Value>> {
     let _ = Command::new("git")
         .args(["-C", &req.path, "add", "-A"])
-        .output();
+        .output()
+        .await;
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -580,7 +589,8 @@ pub async fn git_unstage_all(
 ) -> AppResult<Json<serde_json::Value>> {
     let _ = Command::new("git")
         .args(["-C", &req.path, "reset", "HEAD"])
-        .output();
+        .output()
+        .await;
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -589,7 +599,8 @@ pub async fn git_unstage_all(
 pub async fn git_commit(Json(req): Json<GitCommitRequest>) -> AppResult<Json<serde_json::Value>> {
     let output = Command::new("git")
         .args(["-C", &req.path, "commit", "-m", &req.message])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -606,7 +617,8 @@ pub async fn git_checkout(
 ) -> AppResult<Json<serde_json::Value>> {
     let output = Command::new("git")
         .args(["-C", &req.path, "checkout", &req.branch])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -624,7 +636,10 @@ pub async fn git_checkout(
 
 /// Push to remote.
 pub async fn git_push(Json(req): Json<GitPathRequest>) -> AppResult<Json<serde_json::Value>> {
-    let output = Command::new("git").args(["-C", &req.path, "push"]).output();
+    let output = Command::new("git")
+        .args(["-C", &req.path, "push"])
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -645,7 +660,10 @@ pub async fn git_push(Json(req): Json<GitPathRequest>) -> AppResult<Json<serde_j
 
 /// Pull from remote.
 pub async fn git_pull(Json(req): Json<GitPathRequest>) -> AppResult<Json<serde_json::Value>> {
-    let output = Command::new("git").args(["-C", &req.path, "pull"]).output();
+    let output = Command::new("git")
+        .args(["-C", &req.path, "pull"])
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -668,7 +686,8 @@ pub async fn git_pull(Json(req): Json<GitPathRequest>) -> AppResult<Json<serde_j
 pub async fn git_fetch(Json(req): Json<GitPathRequest>) -> AppResult<Json<serde_json::Value>> {
     let output = Command::new("git")
         .args(["-C", &req.path, "fetch", "--all", "--prune"])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -693,7 +712,8 @@ pub async fn git_discard(Json(req): Json<GitStageRequest>) -> AppResult<Json<ser
         // First try to restore tracked files
         let restore_output = Command::new("git")
             .args(["-C", &req.path, "checkout", "--", file])
-            .output();
+            .output()
+            .await;
 
         // If that fails (e.g., untracked file), try to clean
         if let Ok(output) = restore_output {
@@ -701,7 +721,8 @@ pub async fn git_discard(Json(req): Json<GitStageRequest>) -> AppResult<Json<ser
                 // Try removing untracked file
                 let clean_output = Command::new("git")
                     .args(["-C", &req.path, "clean", "-fd", "--", file])
-                    .output();
+                    .output()
+                    .await;
 
                 if let Ok(clean_out) = clean_output
                     && !clean_out.status.success()
@@ -736,7 +757,7 @@ pub async fn git_create_branch(
         args.push(start.clone());
     }
 
-    let output = Command::new("git").args(&args).output();
+    let output = Command::new("git").args(&args).output().await;
 
     match output {
         Ok(output) => {
@@ -761,7 +782,8 @@ pub async fn git_delete_branch(
 
     let output = Command::new("git")
         .args(["-C", &req.path, "branch", delete_flag, &req.name])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -793,7 +815,7 @@ pub async fn git_merge(Json(req): Json<GitMergeRequest>) -> AppResult<Json<serde
 
     args.push(req.branch.clone());
 
-    let output = Command::new("git").args(&args).output();
+    let output = Command::new("git").args(&args).output().await;
 
     match output {
         Ok(output) => {
@@ -823,7 +845,8 @@ pub async fn git_stash_list(
 ) -> AppResult<Json<serde_json::Value>> {
     let output = Command::new("git")
         .args(["-C", &query.path, "stash", "list", "--format=%gd|%H|%s|%aI"])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -886,7 +909,7 @@ pub async fn git_stash_create(
         args.push(msg);
     }
 
-    let output = Command::new("git").args(&args).output();
+    let output = Command::new("git").args(&args).output().await;
 
     match output {
         Ok(output) => {
@@ -919,7 +942,8 @@ pub async fn git_stash_apply(
 
     let output = Command::new("git")
         .args(["-C", &req.path, "stash", "apply", &stash_ref])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -947,7 +971,8 @@ pub async fn git_stash_pop(
 
     let output = Command::new("git")
         .args(["-C", &req.path, "stash", "pop", &stash_ref])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
@@ -975,7 +1000,8 @@ pub async fn git_stash_drop(
 
     let output = Command::new("git")
         .args(["-C", &req.path, "stash", "drop", &stash_ref])
-        .output();
+        .output()
+        .await;
 
     match output {
         Ok(output) => {
