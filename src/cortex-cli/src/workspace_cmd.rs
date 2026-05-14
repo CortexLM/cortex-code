@@ -10,6 +10,8 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+const WORKSPACE_SECTION_RULE_WIDTH: usize = 50;
+
 /// Workspace CLI command.
 #[derive(Debug, Parser)]
 pub struct WorkspaceCli {
@@ -184,7 +186,7 @@ async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
     }
 
     println!("Workspace Information");
-    println!("{}", "=".repeat(50));
+    println!("{}", "=".repeat(WORKSPACE_SECTION_RULE_WIDTH));
     println!("  Root:        {}", info.root.display());
     if let Some(ref name) = info.project_name {
         println!("  Project:     {}", name);
@@ -192,7 +194,7 @@ async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
     println!();
 
     println!("Configuration:");
-    println!("{}", "-".repeat(40));
+    println!("{}", "-".repeat(WORKSPACE_SECTION_RULE_WIDTH));
     println!(
         "  .cortex/config.toml: {}",
         if info.has_cortex_config {
@@ -217,7 +219,7 @@ async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
     if let Some(ref settings) = info.settings {
         println!();
         println!("Workspace Settings:");
-        println!("{}", "-".repeat(40));
+        println!("{}", "-".repeat(WORKSPACE_SECTION_RULE_WIDTH));
         if let Some(ref model) = settings.model {
             println!("  Model:         {}", model);
         }
@@ -626,6 +628,13 @@ mod tests {
         let args = WorkspaceShowArgs { json: true };
 
         assert!(args.json);
+    }
+
+    #[test]
+    fn test_workspace_show_rule_width_is_consistent() {
+        assert_eq!(WORKSPACE_SECTION_RULE_WIDTH, 50);
+        assert_eq!("=".repeat(WORKSPACE_SECTION_RULE_WIDTH).len(), 50);
+        assert_eq!("-".repeat(WORKSPACE_SECTION_RULE_WIDTH).len(), 50);
     }
 
     // ==========================================================================
