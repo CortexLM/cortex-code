@@ -1,11 +1,14 @@
 //! Custom agents API endpoints.
 
+use std::io::ErrorKind;
+use std::path::Path as StdPath;
 use std::sync::Arc;
 
 use axum::{
     Json,
     extract::{Path, State},
 };
+use tokio::fs;
 
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -16,12 +19,12 @@ use super::types::{
 };
 
 /// Read agent file from disk.
-fn read_agent_file(path: &std::path::Path, scope: &str) -> Option<AgentDefinition> {
+async fn read_agent_file(path: &StdPath, scope: &str) -> Option<AgentDefinition> {
     if path.extension().and_then(|e| e.to_str()) != Some("md") {
         return None;
     }
 
-    let content = std::fs::read_to_string(path).ok()?;
+    let content = fs::read_to_string(path).await.ok()?;
     let name = path.file_stem()?.to_str()?.to_string();
 
     // Parse YAML frontmatter
@@ -70,34 +73,34 @@ fn read_agent_file(path: &std::path::Path, scope: &str) -> Option<AgentDefinitio
     })
 }
 
+async fn list_agents_in_dir(dir: &StdPath, scope: &str) -> Vec<AgentDefinition> {
+    let mut agents = Vec::new();
+    let mut entries = match fs::read_dir(dir).await {
+        Ok(entries) => entries,
+        Err(_) => return agents,
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if let Some(agent) = read_agent_file(&entry.path(), scope).await {
+            agents.push(agent);
+        }
+    }
+
+    agents
+}
+
 /// List all agents.
 pub async fn list_agents() -> AppResult<Json<Vec<AgentDefinition>>> {
     let mut agents = Vec::new();
 
     // Project agents (.factory/agents/)
-    let project_dir = std::path::Path::new(".factory/agents");
-    if project_dir.exists()
-        && let Ok(entries) = std::fs::read_dir(project_dir)
-    {
-        for entry in entries.flatten() {
-            if let Some(agent) = read_agent_file(&entry.path(), "project") {
-                agents.push(agent);
-            }
-        }
-    }
+    let project_dir = StdPath::new(".factory/agents");
+    agents.extend(list_agents_in_dir(project_dir, "project").await);
 
     // User agents (~/.factory/agents/)
     if let Some(home) = dirs::home_dir() {
         let user_dir = home.join(".factory/agents");
-        if user_dir.exists()
-            && let Ok(entries) = std::fs::read_dir(&user_dir)
-        {
-            for entry in entries.flatten() {
-                if let Some(agent) = read_agent_file(&entry.path(), "user") {
-                    agents.push(agent);
-                }
-            }
-        }
+        agents.extend(list_agents_in_dir(&user_dir, "user").await);
     }
 
     Ok(Json(agents))
@@ -106,15 +109,15 @@ pub async fn list_agents() -> AppResult<Json<Vec<AgentDefinition>>> {
 /// Get a specific agent.
 pub async fn get_agent(Path(name): Path<String>) -> AppResult<Json<AgentDefinition>> {
     // Check project first
-    let project_path = std::path::Path::new(".factory/agents").join(format!("{}.md", name));
-    if let Some(agent) = read_agent_file(&project_path, "project") {
+    let project_path = StdPath::new(".factory/agents").join(format!("{}.md", name));
+    if let Some(agent) = read_agent_file(&project_path, "project").await {
         return Ok(Json(agent));
     }
 
     // Check user
     if let Some(home) = dirs::home_dir() {
         let user_path = home.join(".factory/agents").join(format!("{}.md", name));
-        if let Some(agent) = read_agent_file(&user_path, "user") {
+        if let Some(agent) = read_agent_file(&user_path, "user").await {
             return Ok(Json(agent));
         }
     }
@@ -132,7 +135,8 @@ pub async fn create_agent(Json(req): Json<CreateAgentRequest>) -> AppResult<Json
             .join(".factory/agents")
     };
 
-    std::fs::create_dir_all(&dir)
+    fs::create_dir_all(&dir)
+        .await
         .map_err(|e| AppError::Internal(format!("Failed to create directory: {}", e)))?;
 
     let path = dir.join(format!("{}.md", req.name));
@@ -153,7 +157,8 @@ pub async fn create_agent(Json(req): Json<CreateAgentRequest>) -> AppResult<Json
         req.prompt
     );
 
-    std::fs::write(&path, &content)
+    fs::write(&path, &content)
+        .await
         .map_err(|e| AppError::Internal(format!("Failed to write agent file: {}", e)))?;
 
     Ok(Json(AgentDefinition {
@@ -170,20 +175,24 @@ pub async fn create_agent(Json(req): Json<CreateAgentRequest>) -> AppResult<Json
 /// Delete an agent.
 pub async fn delete_agent(Path(name): Path<String>) -> AppResult<Json<serde_json::Value>> {
     // Try project first
-    let project_path = std::path::Path::new(".factory/agents").join(format!("{}.md", name));
-    if project_path.exists() {
-        std::fs::remove_file(&project_path)
-            .map_err(|e| AppError::Internal(format!("Failed to delete: {}", e)))?;
-        return Ok(Json(serde_json::json!({"deleted": true})));
+    let project_path = StdPath::new(".factory/agents").join(format!("{}.md", name));
+    match fs::remove_file(&project_path).await {
+        Ok(()) => return Ok(Json(serde_json::json!({"deleted": true}))),
+        Err(err) if err.kind() != ErrorKind::NotFound => {
+            return Err(AppError::Internal(format!("Failed to delete: {}", err)));
+        }
+        Err(_) => {}
     }
 
     // Try user
     if let Some(home) = dirs::home_dir() {
         let user_path = home.join(".factory/agents").join(format!("{}.md", name));
-        if user_path.exists() {
-            std::fs::remove_file(&user_path)
-                .map_err(|e| AppError::Internal(format!("Failed to delete: {}", e)))?;
-            return Ok(Json(serde_json::json!({"deleted": true})));
+        match fs::remove_file(&user_path).await {
+            Ok(()) => return Ok(Json(serde_json::json!({"deleted": true}))),
+            Err(err) if err.kind() != ErrorKind::NotFound => {
+                return Err(AppError::Internal(format!("Failed to delete: {}", err)));
+            }
+            Err(_) => {}
         }
     }
 
@@ -229,14 +238,14 @@ pub async fn update_agent(
     Json(req): Json<UpdateAgentRequest>,
 ) -> AppResult<Json<AgentDefinition>> {
     // Find existing agent
-    let project_path = std::path::Path::new(".factory/agents").join(format!("{}.md", name));
+    let project_path = StdPath::new(".factory/agents").join(format!("{}.md", name));
     let user_path =
         dirs::home_dir().map(|h| h.join(".factory/agents").join(format!("{}.md", name)));
 
-    let (existing, path) = if let Some(agent) = read_agent_file(&project_path, "project") {
+    let (existing, path) = if let Some(agent) = read_agent_file(&project_path, "project").await {
         (agent, project_path)
     } else if let Some(ref user_path) = user_path {
-        if let Some(agent) = read_agent_file(user_path, "user") {
+        if let Some(agent) = read_agent_file(user_path, "user").await {
             (agent, user_path.clone())
         } else {
             return Err(AppError::NotFound(format!("Agent not found: {}", name)));
@@ -273,7 +282,8 @@ pub async fn update_agent(
         updated.prompt
     );
 
-    std::fs::write(&path, &content)
+    fs::write(&path, &content)
+        .await
         .map_err(|e| AppError::Internal(format!("Failed to update agent: {}", e)))?;
 
     Ok(Json(updated))
@@ -360,13 +370,15 @@ pub async fn import_agent(Json(req): Json<ImportAgentRequest>) -> AppResult<Json
             .join(".factory/agents")
     };
 
-    std::fs::create_dir_all(&dir)
+    fs::create_dir_all(&dir)
+        .await
         .map_err(|e| AppError::Internal(format!("Failed to create directory: {}", e)))?;
 
     let path = dir.join(format!("{}.md", name));
 
     // Write the file
-    std::fs::write(&path, &req.content)
+    fs::write(&path, &req.content)
+        .await
         .map_err(|e| AppError::Internal(format!("Failed to write agent file: {}", e)))?;
 
     Ok(Json(AgentDefinition {
@@ -408,4 +420,63 @@ pub async fn generate_agent_prompt(
         model: "inherit".to_string(),
         permission_mode: "default".to_string(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_test_dir(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("cortex-app-server-{name}-{unique}"))
+    }
+
+    #[tokio::test]
+    async fn read_agent_file_parses_frontmatter_async() {
+        let dir = temp_test_dir("frontmatter");
+        fs::create_dir_all(&dir).await.unwrap();
+        let path = dir.join("reviewer.md");
+        let content = r#"---
+description: Reviews code
+tools: ["Read", "Grep"]
+model: claude
+permissionMode: default
+---
+
+Review this patch.
+"#;
+
+        fs::write(&path, content).await.unwrap();
+
+        let agent = read_agent_file(&path, "project").await.unwrap();
+        assert_eq!(agent.name, "reviewer");
+        assert_eq!(agent.description, "Reviews code");
+        assert_eq!(agent.tools, vec!["Read", "Grep"]);
+        assert_eq!(agent.model, "claude");
+        assert_eq!(agent.prompt, "Review this patch.");
+        assert_eq!(agent.scope, "project");
+
+        let _ = fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn list_agents_in_dir_ignores_non_markdown_files() {
+        let dir = temp_test_dir("list");
+        fs::create_dir_all(&dir).await.unwrap();
+        fs::write(dir.join("first.md"), "Prompt one").await.unwrap();
+        fs::write(dir.join("notes.txt"), "ignore me").await.unwrap();
+
+        let agents = list_agents_in_dir(&dir, "user").await;
+
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].name, "first");
+        assert_eq!(agents[0].scope, "user");
+
+        let _ = fs::remove_dir_all(&dir).await;
+    }
 }
