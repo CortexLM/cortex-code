@@ -6,12 +6,84 @@
 //! This file provides the command result handling infrastructure.
 
 use anyhow::Result;
+use std::path::Path;
 
 use crate::app::AppView;
 use crate::commands::{CommandResult, FormRegistry, ModalType, ViewType};
 use crate::session::{CortexSession, ExportFormat, default_export_filename, export_session};
+use cortex_engine::rollout::get_rollout_path;
+use cortex_engine::rollout::read_rollout;
+use cortex_engine::rollout::reader::{RolloutItem, SessionMetaEntry};
+use cortex_protocol::{ConversationId, EventMsg};
 
 use super::core::EventLoop;
+
+fn legacy_session_title(meta: &SessionMetaEntry) -> String {
+    match meta.model.as_deref() {
+        Some(model) if !model.is_empty() && model != "unknown" => model.to_string(),
+        _ => Path::new(&meta.cwd)
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Session".to_string()),
+    }
+}
+
+fn legacy_session_message_count(entries: &[cortex_engine::rollout::RolloutEntry]) -> usize {
+    entries
+        .iter()
+        .filter(|entry| {
+            matches!(
+                &entry.item,
+                RolloutItem::EventMsg(
+                    EventMsg::UserMessage(_)
+                        | EventMsg::AgentMessage(_)
+                        | EventMsg::ExecCommandEnd(_)
+                )
+            )
+        })
+        .count()
+}
+
+fn format_legacy_session_info(
+    cortex_home: &std::path::PathBuf,
+    conversation_id: &ConversationId,
+    provider: &str,
+) -> Result<Option<String>> {
+    let rollout_path = get_rollout_path(cortex_home, conversation_id);
+    if !rollout_path.exists() {
+        return Ok(None);
+    }
+
+    let entries = read_rollout(&rollout_path)?;
+    let Some(meta) = entries.iter().find_map(|entry| match &entry.item {
+        RolloutItem::SessionMeta(meta) => Some(meta),
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
+
+    let mut output = String::from("Session Info:\n");
+    output.push_str(&format!("  ID: {}\n", meta.id));
+    output.push_str(&format!("  Title: {}\n", legacy_session_title(meta)));
+    if !provider.is_empty() {
+        output.push_str(&format!("  Provider: {}\n", provider));
+    }
+    if let Some(model) = meta.model.as_deref() {
+        output.push_str(&format!("  Model: {}\n", model));
+    }
+    output.push_str(&format!(
+        "  Messages: {}\n",
+        legacy_session_message_count(&entries)
+    ));
+
+    let created = chrono::DateTime::parse_from_rfc3339(&meta.timestamp)
+        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_else(|_| meta.timestamp.clone());
+    output.push_str(&format!("  Created: {}\n", created));
+    output.push_str(&format!("  CWD: {}\n", meta.cwd));
+
+    Ok(Some(output))
+}
 
 impl EventLoop {
     /// Handles a command result from the CommandExecutor.
@@ -514,6 +586,18 @@ impl EventLoop {
                 session.meta.created_at.format("%Y-%m-%d %H:%M")
             ));
             self.add_system_message(&output);
+        } else if let Some(ref bridge) = self.session_bridge {
+            match format_legacy_session_info(
+                &bridge.config().cortex_home,
+                bridge.conversation_id(),
+                &self.app_state.provider,
+            ) {
+                Ok(Some(output)) => self.add_system_message(&output),
+                Ok(None) => self.add_system_message("No active session."),
+                Err(err) => {
+                    self.add_system_message(&format!("Failed to load session info: {}", err))
+                }
+            }
         } else {
             self.add_system_message("No active session.");
         }
@@ -652,5 +736,69 @@ impl EventLoop {
                     .insert(key.to_string(), value.to_string());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cortex_engine::rollout::recorder::{RolloutRecorder, SessionMeta};
+    use cortex_protocol::{AgentMessageEvent, Event, UserMessageEvent};
+    use std::path::PathBuf;
+
+    #[test]
+    fn formats_legacy_session_info_from_rollout() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cortex_home = temp_dir.path().to_path_buf();
+        let conversation_id = ConversationId::new();
+
+        let mut recorder = RolloutRecorder::new(&cortex_home, conversation_id).unwrap();
+        recorder.init().unwrap();
+        recorder
+            .record_meta(&SessionMeta {
+                id: conversation_id,
+                parent_id: None,
+                fork_point: None,
+                timestamp: "2026-04-10T03:00:00Z".to_string(),
+                cwd: PathBuf::from("/tmp/imported-session"),
+                model: "claude-3-7-sonnet".to_string(),
+                cli_version: "test".to_string(),
+                instructions: None,
+            })
+            .unwrap();
+        recorder
+            .record_event(&Event {
+                id: "1".to_string(),
+                msg: EventMsg::UserMessage(UserMessageEvent {
+                    id: None,
+                    parent_id: None,
+                    message: "hello".to_string(),
+                    images: None,
+                }),
+            })
+            .unwrap();
+        recorder
+            .record_event(&Event {
+                id: "1".to_string(),
+                msg: EventMsg::AgentMessage(AgentMessageEvent {
+                    id: None,
+                    parent_id: None,
+                    message: "world".to_string(),
+                    finish_reason: None,
+                }),
+            })
+            .unwrap();
+        recorder.flush().unwrap();
+
+        let output = format_legacy_session_info(&cortex_home, &conversation_id, "cortex")
+            .unwrap()
+            .unwrap();
+
+        assert!(output.contains("Session Info:"));
+        assert!(output.contains(&format!("ID: {}", conversation_id)));
+        assert!(output.contains("Provider: cortex"));
+        assert!(output.contains("Model: claude-3-7-sonnet"));
+        assert!(output.contains("Messages: 2"));
+        assert!(output.contains("CWD: /tmp/imported-session"));
     }
 }
