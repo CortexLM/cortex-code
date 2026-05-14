@@ -35,12 +35,15 @@ pub const AFTER_HELP: &str = color_print::cstr!(
     <green,bold>cortex resume --last</>           Continue most recent session
 
 <cyan,bold>🌍 ENVIRONMENT VARIABLES</>
-    <yellow>CORTEX_HOME</>          Override config directory (default: ~/.config/cortex)
+    <yellow>CORTEX_CONFIG_DIR</>    Highest-priority Cortex home override
+    <yellow>CORTEX_HOME</>          Override Cortex home directory
     <yellow>CORTEX_API_KEY</>       API key (alternative to --with-api-key)
     <yellow>CORTEX_MODEL</>         Default model (alternative to --model)
     <yellow>CORTEX_LOG_LEVEL</>     Log verbosity (error, warn, info, debug, trace)
     <yellow>NO_COLOR</>             Disable colored output (set to '1' or 'true')
     <yellow>VISUAL</>/<yellow>EDITOR</>        Editor for /edit command
+    <dim>sudo/root</>               Under sudo, Cortex prefers SUDO_USER or SUDO_UID home resolution.
+    <dim>                         </> Bare root uses root's home; set CORTEX_HOME or CORTEX_CONFIG_DIR to override.
 
 <cyan,bold>📁 PATHS</>
     <dim>Config</>      ~/.config/cortex/config.toml
