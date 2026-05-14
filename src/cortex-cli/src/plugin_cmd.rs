@@ -1147,6 +1147,13 @@ async fn run_remove(args: PluginRemoveArgs) -> Result<()> {
     let plugins_dir = get_plugins_dir();
     let plugin_path = plugins_dir.join(&args.name);
 
+    tracing::debug!(
+        plugin = %args.name,
+        plugins_dir = %plugins_dir.display(),
+        plugin_path = %plugin_path.display(),
+        "Preparing to remove plugin"
+    );
+
     if !plugin_path.exists() {
         bail!("Plugin '{}' is not installed.", args.name);
     }
@@ -1159,12 +1166,14 @@ async fn run_remove(args: PluginRemoveArgs) -> Result<()> {
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
         if !input.trim().eq_ignore_ascii_case("y") {
+            tracing::debug!(plugin = %args.name, "Plugin removal aborted by user");
             println!("Aborted.");
             return Ok(());
         }
     }
 
     std::fs::remove_dir_all(&plugin_path)?;
+    tracing::debug!(plugin = %args.name, "Plugin directory removed successfully");
     println!("Plugin '{}' removed successfully.", args.name);
     Ok(())
 }
