@@ -1,7 +1,7 @@
 //! Execution runner for exec mode.
 
 use std::io::{self, BufRead, IsTerminal, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
@@ -82,9 +82,15 @@ impl ExecCli {
 
         // Read from file if specified
         if let Some(ref file_path) = self.file {
-            let content = tokio::fs::read_to_string(file_path)
+            let resolved_file_path = resolve_prompt_file_path(file_path, self.cwd.as_deref());
+            let content = tokio::fs::read_to_string(&resolved_file_path)
                 .await
-                .with_context(|| format!("Failed to read prompt file: {}", file_path.display()))?;
+                .with_context(|| {
+                    format!(
+                        "Failed to read prompt file: {}",
+                        resolved_file_path.display()
+                    )
+                })?;
             prompt.push_str(&content);
         }
 
@@ -850,5 +856,45 @@ impl ExecCli {
         let _ = session_task.await;
 
         Ok(())
+    }
+}
+
+fn resolve_prompt_file_path(file_path: &Path, cwd: Option<&Path>) -> PathBuf {
+    if file_path.is_absolute() {
+        file_path.to_path_buf()
+    } else if let Some(cwd) = cwd {
+        cwd.join(file_path)
+    } else {
+        file_path.to_path_buf()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_prompt_file_path;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn resolve_prompt_file_path_uses_cwd_for_relative_paths() {
+        let cwd = PathBuf::from("workspace").join("nested");
+        let resolved = resolve_prompt_file_path(Path::new("script.sh"), Some(&cwd));
+
+        assert_eq!(resolved, cwd.join("script.sh"));
+    }
+
+    #[test]
+    fn resolve_prompt_file_path_keeps_absolute_paths() {
+        let absolute_file_path = std::env::temp_dir().join("script.sh");
+        let resolved =
+            resolve_prompt_file_path(&absolute_file_path, Some(Path::new("workspace/nested")));
+
+        assert_eq!(resolved, absolute_file_path);
+    }
+
+    #[test]
+    fn resolve_prompt_file_path_keeps_relative_path_without_cwd() {
+        let resolved = resolve_prompt_file_path(Path::new("script.sh"), None);
+
+        assert_eq!(resolved, Path::new("script.sh"));
     }
 }
