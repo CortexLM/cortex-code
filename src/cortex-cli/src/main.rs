@@ -110,7 +110,7 @@ fn check_cortex_home_writable() -> Result<()> {
 async fn check_for_updates_background() {
     // Use cortex_update crate for update checking
     // This runs asynchronously and doesn't block the main command
-    if let Ok(manager) = cortex_update::UpdateManager::new()
+    if let Ok(mut manager) = cortex_update::UpdateManager::new()
         && let Ok(Some(update_info)) = manager.check_update().await
     {
         eprintln!(

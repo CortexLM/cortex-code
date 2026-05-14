@@ -84,21 +84,34 @@ impl UpdateManager {
     }
 
     /// Check if an update is available (uses cache if valid).
-    pub async fn check_update(&self) -> UpdateResult<Option<UpdateInfo>> {
+    pub async fn check_update(&mut self) -> UpdateResult<Option<UpdateInfo>> {
         // Try to use cache first
         if let Some(cache) = VersionCache::load() {
             if cache.is_valid(&self.config)
                 && cache.has_update()
                 && !self.config.is_version_skipped(&cache.latest.version)
+                && !self.config.is_version_notified(&cache.latest.version)
             {
-                return Ok(Some(self.build_update_info(&cache.latest)?));
+                let info = self.build_update_info(&cache.latest)?;
+                self.record_notification(&info.latest_version);
+                return Ok(Some(info));
             } else if cache.is_valid(&self.config) {
                 return Ok(None);
             }
         }
 
         // Cache invalid or missing, check server
-        self.check_update_forced().await
+        let info = self.check_update_forced().await?;
+        if let Some(info) = info {
+            if self.config.is_version_notified(&info.latest_version) {
+                return Ok(None);
+            }
+
+            self.record_notification(&info.latest_version);
+            Ok(Some(info))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Force check for updates (bypass cache).
@@ -188,7 +201,7 @@ impl UpdateManager {
         F: FnMut(DownloadProgress),
     {
         // Check for update
-        let info = match self.check_update().await? {
+        let info = match self.check_update_forced().await? {
             Some(info) => info,
             None => return Ok(UpdateOutcome::AlreadyLatest),
         };
@@ -219,6 +232,16 @@ impl UpdateManager {
             message: e.to_string(),
         })?;
         Ok(())
+    }
+
+    fn record_notification(&mut self, version: &str) {
+        if let Err(e) = self.config.mark_version_notified(version) {
+            tracing::warn!(
+                "Failed to persist last_notified_version for {}: {}",
+                version,
+                e
+            );
+        }
     }
 }
 
