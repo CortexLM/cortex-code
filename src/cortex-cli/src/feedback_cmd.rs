@@ -9,7 +9,7 @@ use anyhow::{Result, bail};
 use clap::Parser;
 use serde::Serialize;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Feedback CLI command.
 #[derive(Debug, Parser)]
@@ -294,19 +294,10 @@ async fn run_history(args: FeedbackHistoryArgs) -> Result<()> {
         return Ok(());
     }
 
-    let mut entries = Vec::new();
+    let (mut entries, warnings) = load_feedback_entries(&feedback_dir);
 
-    // Read feedback files
-    if let Ok(dir_entries) = std::fs::read_dir(&feedback_dir) {
-        for entry in dir_entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|e| e == "json")
-                && let Ok(content) = std::fs::read_to_string(&path)
-                && let Ok(entry) = serde_json::from_str::<FeedbackEntry>(&content)
-            {
-                entries.push(entry);
-            }
-        }
+    for warning in &warnings {
+        eprintln!("{}", warning);
     }
 
     // Sort by timestamp (newest first)
@@ -318,7 +309,11 @@ async fn run_history(args: FeedbackHistoryArgs) -> Result<()> {
     if args.json {
         println!("{}", serde_json::to_string_pretty(&entries)?);
     } else if entries.is_empty() {
-        println!("No feedback history found.");
+        if warnings.is_empty() {
+            println!("No feedback history found.");
+        } else {
+            println!("Feedback history contains unreadable entries. See warnings above.");
+        }
     } else {
         println!("Feedback History:");
         println!("{}", "-".repeat(60));
@@ -336,6 +331,62 @@ async fn run_history(args: FeedbackHistoryArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn load_feedback_entries(feedback_dir: &Path) -> (Vec<FeedbackEntry>, Vec<String>) {
+    let mut entries = Vec::new();
+    let mut warnings = Vec::new();
+
+    match std::fs::read_dir(feedback_dir) {
+        Ok(dir_entries) => {
+            for entry in dir_entries {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) => {
+                        warnings.push(format!(
+                            "Warning: Failed to read feedback directory entry in {}: {}",
+                            feedback_dir.display(),
+                            error
+                        ));
+                        continue;
+                    }
+                };
+
+                let path = entry.path();
+                if !path.extension().is_some_and(|ext| ext == "json") {
+                    continue;
+                }
+
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(content) => content,
+                    Err(error) => {
+                        warnings.push(format!(
+                            "Warning: Failed to read feedback file {}: {}",
+                            path.display(),
+                            error
+                        ));
+                        continue;
+                    }
+                };
+
+                match serde_json::from_str::<FeedbackEntry>(&content) {
+                    Ok(entry) => entries.push(entry),
+                    Err(error) => warnings.push(format!(
+                        "Warning: Failed to parse feedback file {}: {}",
+                        path.display(),
+                        error
+                    )),
+                }
+            }
+        }
+        Err(error) => warnings.push(format!(
+            "Warning: Failed to read feedback directory {}: {}",
+            feedback_dir.display(),
+            error
+        )),
+    }
+
+    (entries, warnings)
 }
 
 /// Submit feedback (save locally and optionally upload).
@@ -410,6 +461,7 @@ fn read_single_line() -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn test_feedback_entry_serialization_with_session() {
@@ -572,5 +624,57 @@ mod tests {
         let parsed: FeedbackEntry =
             serde_json::from_str(&pretty_json).expect("deserialization should succeed");
         assert_eq!(parsed.id, entry.id);
+    }
+
+    #[test]
+    fn test_load_feedback_entries_warns_on_invalid_json() {
+        let temp_dir = tempdir().expect("temp dir should be created");
+        let feedback_dir = temp_dir.path();
+
+        std::fs::write(
+            feedback_dir.join("bad.json"),
+            r#"{"id":"broken","#,
+        )
+        .expect("invalid file should be written");
+
+        let (entries, warnings) = load_feedback_entries(feedback_dir);
+
+        assert!(entries.is_empty(), "invalid JSON should not produce entries");
+        assert_eq!(warnings.len(), 1, "invalid JSON should produce one warning");
+        assert!(
+            warnings[0].contains("Failed to parse feedback file"),
+            "warning should mention parse failure"
+        );
+    }
+
+    #[test]
+    fn test_load_feedback_entries_keeps_valid_entries_and_collects_warnings() {
+        let temp_dir = tempdir().expect("temp dir should be created");
+        let feedback_dir = temp_dir.path();
+
+        let valid_entry = FeedbackEntry {
+            id: "valid-entry".to_string(),
+            timestamp: "2024-09-01T10:00:00Z".to_string(),
+            category: "general".to_string(),
+            message: "This one is valid".to_string(),
+            session_id: None,
+        };
+
+        std::fs::write(
+            feedback_dir.join("good.json"),
+            serde_json::to_string(&valid_entry).expect("valid JSON should serialize"),
+        )
+        .expect("valid file should be written");
+        std::fs::write(
+            feedback_dir.join("bad.json"),
+            r#"{"id":"broken","#,
+        )
+        .expect("invalid file should be written");
+
+        let (entries, warnings) = load_feedback_entries(feedback_dir);
+
+        assert_eq!(entries.len(), 1, "valid entry should still be loaded");
+        assert_eq!(entries[0].id, "valid-entry");
+        assert_eq!(warnings.len(), 1, "invalid entry should still be reported");
     }
 }
