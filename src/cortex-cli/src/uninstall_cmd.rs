@@ -12,6 +12,7 @@
 use crate::styled_output::{print_info, print_warning};
 use anyhow::{Context, Result, bail};
 use clap::Parser;
+use cortex_common::dirs::{AppDirs, HOME_DIR_NAME, LEGACY_XDG_NAME};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -388,12 +389,22 @@ fn collect_binary_locations(home_dir: &Path) -> Result<Vec<RemovalItem>> {
 
 /// Collect items from the ~/.cortex directory.
 fn collect_cortex_home_items(home_dir: &Path) -> Result<Vec<RemovalItem>> {
-    let mut items = Vec::new();
-    let cortex_home = home_dir.join(".cortex");
+    let app_dirs = AppDirs::new().unwrap_or_else(|| {
+        let cortex_home = home_dir.join(HOME_DIR_NAME);
+        AppDirs {
+            config_dir: cortex_home.clone(),
+            data_dir: cortex_home.clone(),
+            cache_dir: cortex_home.join("cache"),
+            legacy_xdg_home: home_dir.join(LEGACY_XDG_NAME),
+        }
+    });
 
-    if !cortex_home.exists() {
-        return Ok(items);
-    }
+    collect_cortex_home_items_from_dirs(&app_dirs)
+}
+
+fn collect_cortex_home_items_from_dirs(app_dirs: &AppDirs) -> Result<Vec<RemovalItem>> {
+    let mut items = Vec::new();
+    let cortex_home = &app_dirs.config_dir;
 
     // Configuration files
     let config_files = [
@@ -402,33 +413,83 @@ fn collect_cortex_home_items(home_dir: &Path) -> Result<Vec<RemovalItem>> {
         ("auth.json", "OAuth tokens"),
     ];
 
-    for (file, desc) in config_files {
-        let path = cortex_home.join(file);
-        if path.exists() {
+    if cortex_home.exists() {
+        for (file, desc) in config_files {
+            let path = cortex_home.join(file);
+            if path.exists() {
+                items.push(RemovalItem {
+                    path: path.clone(),
+                    description: desc.to_string(),
+                    size: get_file_size(&path),
+                    requires_sudo: false,
+                    category: RemovalCategory::Config,
+                });
+            }
+        }
+
+        // Session data directory
+        let sessions_dir = cortex_home.join("sessions");
+        if sessions_dir.exists() {
             items.push(RemovalItem {
-                path: path.clone(),
-                description: desc.to_string(),
-                size: get_file_size(&path),
+                path: sessions_dir.clone(),
+                description: "Session history and data".to_string(),
+                size: get_dir_size(&sessions_dir),
+                requires_sudo: false,
+                category: RemovalCategory::Data,
+            });
+        }
+
+        // Plugins directory
+        let plugins_dir = cortex_home.join("plugins");
+        if plugins_dir.exists() {
+            items.push(RemovalItem {
+                path: plugins_dir.clone(),
+                description: "Installed plugins".to_string(),
+                size: get_dir_size(&plugins_dir),
+                requires_sudo: false,
+                category: RemovalCategory::Plugins,
+            });
+        }
+
+        // Skills directory
+        let skills_dir = cortex_home.join("skills");
+        if skills_dir.exists() {
+            items.push(RemovalItem {
+                path: skills_dir.clone(),
+                description: "Custom skills".to_string(),
+                size: get_dir_size(&skills_dir),
+                requires_sudo: false,
+                category: RemovalCategory::Plugins,
+            });
+        }
+
+        // MCP servers directory
+        let mcp_dir = cortex_home.join("mcp");
+        if mcp_dir.exists() {
+            items.push(RemovalItem {
+                path: mcp_dir.clone(),
+                description: "MCP server configurations".to_string(),
+                size: get_dir_size(&mcp_dir),
                 requires_sudo: false,
                 category: RemovalCategory::Config,
             });
         }
+
+        // Agents directory
+        let agents_dir = cortex_home.join("agents");
+        if agents_dir.exists() {
+            items.push(RemovalItem {
+                path: agents_dir.clone(),
+                description: "Custom agents".to_string(),
+                size: get_dir_size(&agents_dir),
+                requires_sudo: false,
+                category: RemovalCategory::Plugins,
+            });
+        }
     }
 
-    // Session data directory
-    let sessions_dir = cortex_home.join("sessions");
-    if sessions_dir.exists() {
-        items.push(RemovalItem {
-            path: sessions_dir.clone(),
-            description: "Session history and data".to_string(),
-            size: get_dir_size(&sessions_dir),
-            requires_sudo: false,
-            category: RemovalCategory::Data,
-        });
-    }
-
-    // Logs directory
-    let logs_dir = cortex_home.join("logs");
+    // Actual logs directory used by `cortex logs`.
+    let logs_dir = app_dirs.logs_dir();
     if logs_dir.exists() {
         items.push(RemovalItem {
             path: logs_dir.clone(),
@@ -439,56 +500,8 @@ fn collect_cortex_home_items(home_dir: &Path) -> Result<Vec<RemovalItem>> {
         });
     }
 
-    // Plugins directory
-    let plugins_dir = cortex_home.join("plugins");
-    if plugins_dir.exists() {
-        items.push(RemovalItem {
-            path: plugins_dir.clone(),
-            description: "Installed plugins".to_string(),
-            size: get_dir_size(&plugins_dir),
-            requires_sudo: false,
-            category: RemovalCategory::Plugins,
-        });
-    }
-
-    // Skills directory
-    let skills_dir = cortex_home.join("skills");
-    if skills_dir.exists() {
-        items.push(RemovalItem {
-            path: skills_dir.clone(),
-            description: "Custom skills".to_string(),
-            size: get_dir_size(&skills_dir),
-            requires_sudo: false,
-            category: RemovalCategory::Plugins,
-        });
-    }
-
-    // MCP servers directory
-    let mcp_dir = cortex_home.join("mcp");
-    if mcp_dir.exists() {
-        items.push(RemovalItem {
-            path: mcp_dir.clone(),
-            description: "MCP server configurations".to_string(),
-            size: get_dir_size(&mcp_dir),
-            requires_sudo: false,
-            category: RemovalCategory::Config,
-        });
-    }
-
-    // Agents directory
-    let agents_dir = cortex_home.join("agents");
-    if agents_dir.exists() {
-        items.push(RemovalItem {
-            path: agents_dir.clone(),
-            description: "Custom agents".to_string(),
-            size: get_dir_size(&agents_dir),
-            requires_sudo: false,
-            category: RemovalCategory::Plugins,
-        });
-    }
-
     // Cache directory
-    let cache_dir = cortex_home.join("cache");
+    let cache_dir = app_dirs.cache_dir.clone();
     if cache_dir.exists() {
         items.push(RemovalItem {
             path: cache_dir.clone(),
@@ -517,7 +530,7 @@ fn collect_cortex_home_items(home_dir: &Path) -> Result<Vec<RemovalItem>> {
     } else {
         // Add the parent directory itself at the end (to be removed after contents)
         items.push(RemovalItem {
-            path: cortex_home,
+            path: cortex_home.clone(),
             description: "Cortex home directory (if empty)".to_string(),
             size: 0,
             requires_sudo: false,
@@ -926,6 +939,7 @@ fn clean_rc_file(path: &Path, patterns: &[&str]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_format_size() {
@@ -975,5 +989,62 @@ mod tests {
             | InstallMethod::Installer
             | InstallMethod::Unknown => {}
         }
+    }
+
+    #[test]
+    fn test_collect_cortex_home_items_uses_actual_cache_logs_dir() {
+        let temp = TempDir::new().unwrap();
+        let config_dir = temp.path().join("config");
+        let cache_dir = temp.path().join("cache");
+        let logs_dir = cache_dir.join("logs");
+
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::create_dir_all(&logs_dir).unwrap();
+        fs::write(logs_dir.join("debug.log"), "test log").unwrap();
+
+        let app_dirs = AppDirs {
+            config_dir: config_dir.clone(),
+            data_dir: config_dir.clone(),
+            cache_dir: cache_dir.clone(),
+            legacy_xdg_home: temp.path().join("legacy"),
+        };
+
+        let items = collect_cortex_home_items_from_dirs(&app_dirs).unwrap();
+
+        assert!(
+            items.iter().any(|item| item.path == logs_dir),
+            "expected uninstall items to include the real cache logs directory"
+        );
+        assert!(
+            !items
+                .iter()
+                .any(|item| item.path == config_dir.join("logs")),
+            "uninstall should not look for logs under the config directory"
+        );
+    }
+
+    #[test]
+    fn test_collect_cortex_home_items_keeps_cache_logs_without_config_dir() {
+        let temp = TempDir::new().unwrap();
+        let config_dir = temp.path().join("config");
+        let cache_dir = temp.path().join("cache");
+        let logs_dir = cache_dir.join("logs");
+
+        fs::create_dir_all(&logs_dir).unwrap();
+        fs::write(logs_dir.join("debug.log"), "test log").unwrap();
+
+        let app_dirs = AppDirs {
+            config_dir,
+            data_dir: temp.path().join("data"),
+            cache_dir: cache_dir.clone(),
+            legacy_xdg_home: temp.path().join("legacy"),
+        };
+
+        let items = collect_cortex_home_items_from_dirs(&app_dirs).unwrap();
+
+        assert!(
+            items.iter().any(|item| item.path == logs_dir),
+            "cache logs should still be removable even if the config dir is absent"
+        );
     }
 }

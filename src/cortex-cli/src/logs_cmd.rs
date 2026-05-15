@@ -8,6 +8,7 @@
 
 use anyhow::Result;
 use clap::Parser;
+use cortex_common::dirs::AppDirs;
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -58,11 +59,11 @@ struct LogFileInfo {
 
 /// Get the logs directory.
 fn get_logs_dir() -> PathBuf {
-    dirs::cache_dir()
-        .map(|c| c.join("cortex").join("logs"))
+    AppDirs::new()
+        .map(|dirs| dirs.logs_dir())
         .unwrap_or_else(|| {
             dirs::home_dir()
-                .map(|h| h.join(".cache").join("cortex").join("logs"))
+                .map(|h| h.join(".cortex").join("cache").join("logs"))
                 .unwrap_or_else(|| PathBuf::from(".cache/cortex/logs"))
         })
 }
