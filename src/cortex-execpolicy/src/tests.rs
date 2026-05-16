@@ -73,6 +73,22 @@ mod parsed_command_tests {
     use super::*;
 
     #[test]
+    fn test_normalize_path_collapses_repeated_slashes() {
+        assert_eq!(
+            crate::detection::DetectionHelper::normalize_path("///etc/shadow"),
+            "/etc/shadow"
+        );
+        assert_eq!(
+            crate::detection::DetectionHelper::normalize_path("////etc//passwd///"),
+            "/etc/passwd"
+        );
+        assert_eq!(
+            crate::detection::DetectionHelper::normalize_path(r"C:\\Users\\secrets\\"),
+            "C:/Users/secrets"
+        );
+    }
+
+    #[test]
     fn test_parse_simple_command() {
         let cmd = ParsedCommand::from_args(&["ls".to_string(), "-la".to_string()]).unwrap();
         assert_eq!(cmd.program, "ls");
@@ -241,6 +257,28 @@ mod destructive_file_ops_tests {
             vec!["rm", "-rf", "//"],  // Double slash
             vec!["rm", "-rf", "/./"], // Dot in path
             vec!["rm", "-rf", "///"], // Triple slash
+        ];
+
+        for cmd in bypass_attempts {
+            let cmd_strings: Vec<String> = cmd.iter().map(|s| s.to_string()).collect();
+            assert_eq!(
+                policy.evaluate(&cmd_strings),
+                Decision::Deny,
+                "Failed for: {:?}",
+                cmd
+            );
+        }
+    }
+
+    #[test]
+    fn test_multi_slash_sensitive_paths_denied() {
+        let policy = ExecPolicy::new();
+
+        let bypass_attempts = vec![
+            vec!["rm", "-rf", "///etc"],
+            vec!["rm", "-rf", "////etc/passwd"],
+            vec!["shred", "///etc/shadow"],
+            vec!["chmod", "777", "///etc/passwd"],
         ];
 
         for cmd in bypass_attempts {

@@ -17,20 +17,20 @@ impl<'a> DetectionHelper<'a> {
 
     /// Normalize a path for comparison.
     pub fn normalize_path(path: &str) -> String {
-        let mut normalized = path.replace("//", "/");
+        let mut normalized = path.replace('\\', "/");
+
+        if normalized.starts_with('~') {
+            normalized = normalized.replacen('~', "/home", 1);
+        }
+
+        while normalized.contains("//") {
+            normalized = normalized.replace("//", "/");
+        }
 
         // Handle trailing slashes
         while normalized.len() > 1 && normalized.ends_with('/') {
             normalized.pop();
         }
-
-        // Expand ~ to /home or user directory indicator
-        if normalized.starts_with('~') {
-            normalized = normalized.replacen('~', "/home", 1);
-        }
-
-        // Handle Windows paths
-        normalized = normalized.replace('\\', "/");
 
         normalized
     }
