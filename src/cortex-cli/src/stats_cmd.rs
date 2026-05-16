@@ -118,9 +118,11 @@ fn load_custom_pricing() -> std::collections::HashMap<String, ModelPricing> {
     // Try to load from environment variables in format:
     // CORTEX_PRICING_<MODEL>=<input_price>,<output_price>
     // Example: CORTEX_PRICING_GPT4O=2.5,10.0
+    // Use double underscore to encode provider-prefixed model IDs:
+    // CORTEX_PRICING_ANTHROPIC__CLAUDE_3_5_SONNET=3.0,15.0
     for (key, value) in std::env::vars() {
         if let Some(model_suffix) = key.strip_prefix("CORTEX_PRICING_") {
-            let model_name = model_suffix.to_lowercase().replace('_', "-");
+            let model_name = pricing_env_model_name(model_suffix);
             let parts: Vec<&str> = value.split(',').collect();
             if parts.len() == 2
                 && let (Ok(input), Ok(output)) = (
@@ -140,6 +142,14 @@ fn load_custom_pricing() -> std::collections::HashMap<String, ModelPricing> {
     }
 
     custom
+}
+
+fn pricing_env_model_name(model_suffix: &str) -> String {
+    model_suffix
+        .to_lowercase()
+        .replace("__", "\0")
+        .replace('_', "-")
+        .replace('\0', "/")
 }
 
 impl StatsCli {
@@ -733,6 +743,27 @@ mod tests {
         // GPT-4o: $2.50/$10 per 1M
         let cost = calculate_cost("gpt-4o", 1_000_000, 1_000_000);
         assert!((cost - 12.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_pricing_env_model_name_supports_provider_prefixed_models() {
+        assert_eq!(
+            pricing_env_model_name("ANTHROPIC__CLAUDE_3_5_SONNET"),
+            "anthropic/claude-3-5-sonnet"
+        );
+        assert_eq!(
+            pricing_env_model_name("OPENAI__GPT_4O_MINI"),
+            "openai/gpt-4o-mini"
+        );
+    }
+
+    #[test]
+    fn test_pricing_env_model_name_preserves_legacy_underscore_mapping() {
+        assert_eq!(pricing_env_model_name("GPT_4O_MINI"), "gpt-4o-mini");
+        assert_eq!(
+            pricing_env_model_name("CLAUDE_3_5_HAIKU"),
+            "claude-3-5-haiku"
+        );
     }
 
     #[test]
