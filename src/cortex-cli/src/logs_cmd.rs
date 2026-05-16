@@ -7,7 +7,7 @@
 //! - Clear old logs
 
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -23,8 +23,8 @@ pub struct LogsCli {
     pub follow: bool,
 
     /// Filter by log level (error, warn, info, debug, trace)
-    #[arg(long, short = 'l')]
-    pub level: Option<String>,
+    #[arg(long, short = 'l', value_enum)]
+    pub level: Option<LogFilterLevel>,
 
     /// Show logs from a specific session
     #[arg(long, short = 's')]
@@ -56,6 +56,18 @@ struct LogFileInfo {
     modified: String,
 }
 
+/// Valid levels for log filtering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "lower")]
+pub enum LogFilterLevel {
+    Error,
+    #[value(alias = "warning")]
+    Warn,
+    Info,
+    Debug,
+    Trace,
+}
+
 /// Get the logs directory.
 fn get_logs_dir() -> PathBuf {
     dirs::cache_dir()
@@ -79,6 +91,43 @@ fn format_size(bytes: u64) -> String {
     } else {
         format!("{} B", bytes)
     }
+}
+
+fn level_from_token(token: &str) -> Option<LogFilterLevel> {
+    match token.to_ascii_uppercase().as_str() {
+        "ERROR" => Some(LogFilterLevel::Error),
+        "WARN" | "WARNING" => Some(LogFilterLevel::Warn),
+        "INFO" => Some(LogFilterLevel::Info),
+        "DEBUG" => Some(LogFilterLevel::Debug),
+        "TRACE" => Some(LogFilterLevel::Trace),
+        _ => None,
+    }
+}
+
+fn is_timestamp_token(token: &str) -> bool {
+    matches!(token, "T" | "Z" | "UTC")
+}
+
+fn line_log_level(line: &str) -> Option<LogFilterLevel> {
+    for token in line.split(|c: char| !c.is_ascii_alphabetic()) {
+        if token.is_empty() {
+            continue;
+        }
+
+        if let Some(level) = level_from_token(token) {
+            return Some(level);
+        }
+
+        if !is_timestamp_token(token) {
+            return None;
+        }
+    }
+
+    None
+}
+
+fn line_matches_level(line: &str, level: LogFilterLevel) -> bool {
+    line_log_level(line) == Some(level)
 }
 
 impl LogsCli {
@@ -170,11 +219,10 @@ impl LogsCli {
         let total_lines = lines.len();
 
         // Apply level filter if specified
-        let filtered_lines: Vec<&str> = if let Some(ref level) = self.level {
-            let level_upper = level.to_uppercase();
+        let filtered_lines: Vec<&str> = if let Some(level) = self.level {
             lines
                 .iter()
-                .filter(|line| line.to_uppercase().contains(&level_upper))
+                .filter(|line| line_matches_level(line, level))
                 .copied()
                 .collect()
         } else {
@@ -228,7 +276,7 @@ impl LogsCli {
         // Seek to end
         reader.seek(SeekFrom::End(0))?;
 
-        let level_filter = self.level.clone();
+        let level_filter = self.level;
 
         loop {
             let mut line = String::new();
@@ -239,8 +287,8 @@ impl LogsCli {
                 }
                 Ok(_) => {
                     // Apply level filter if specified
-                    if let Some(ref level) = level_filter
-                        && !line.to_uppercase().contains(&level.to_uppercase())
+                    if let Some(level) = level_filter
+                        && !line_matches_level(&line, level)
                     {
                         continue;
                     }
@@ -517,7 +565,7 @@ mod tests {
         let cli = LogsCli::parse_from(["logs", "-l", "error"]);
         assert_eq!(
             cli.level,
-            Some("error".to_string()),
+            Some(LogFilterLevel::Error),
             "Level should be 'error'"
         );
     }
@@ -529,8 +577,33 @@ mod tests {
         let cli = LogsCli::parse_from(["logs", "--level", "debug"]);
         assert_eq!(
             cli.level,
-            Some("debug".to_string()),
+            Some(LogFilterLevel::Debug),
             "Level should be 'debug'"
+        );
+    }
+
+    #[test]
+    fn test_logs_cli_level_filter_rejects_invalid_values() {
+        use clap::Parser;
+
+        let err = LogsCli::try_parse_from(["logs", "--level", "rr"])
+            .expect_err("invalid level should be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains("invalid value") && message.contains("error"),
+            "unexpected error: {message}"
+        );
+    }
+
+    #[test]
+    fn test_logs_cli_level_filter_accepts_warning_alias() {
+        use clap::Parser;
+
+        let cli = LogsCli::parse_from(["logs", "--level", "warning"]);
+        assert_eq!(
+            cli.level,
+            Some(LogFilterLevel::Warn),
+            "warning should map to warn"
         );
     }
 
@@ -598,10 +671,38 @@ mod tests {
         assert_eq!(cli.lines, 25, "Lines should be 25");
         assert_eq!(
             cli.level,
-            Some("warn".to_string()),
+            Some(LogFilterLevel::Warn),
             "Level should be 'warn'"
         );
         assert!(cli.json, "JSON should be true");
+    }
+
+    #[test]
+    fn test_line_matches_level_uses_structured_level_token() {
+        assert!(line_matches_level(
+            "2026-05-17T12:00:00.000000Z ERROR cortex_cli: failed",
+            LogFilterLevel::Error
+        ));
+        assert!(line_matches_level(
+            "[WARN] retrying request",
+            LogFilterLevel::Warn
+        ));
+        assert!(line_matches_level(
+            "INFO cortex_cli::logs_cmd: ready",
+            LogFilterLevel::Info
+        ));
+    }
+
+    #[test]
+    fn test_line_matches_level_ignores_message_substrings() {
+        assert!(!line_matches_level(
+            "2026-05-17T12:00:00.000000Z INFO cortex_cli: no error occurred",
+            LogFilterLevel::Error
+        ));
+        assert!(!line_matches_level(
+            "arbitrary user message mentions ERROR but has no leading level",
+            LogFilterLevel::Error
+        ));
     }
 
     // =========================================================================
