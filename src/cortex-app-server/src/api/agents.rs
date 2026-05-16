@@ -15,6 +15,54 @@ use super::types::{
     ImportAgentRequest, UpdateAgentRequest,
 };
 
+const PROJECT_AGENTS_DIR: &str = ".cortex/agents";
+const LEGACY_PROJECT_AGENTS_DIR: &str = ".factory/agents";
+
+fn project_agents_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(PROJECT_AGENTS_DIR)
+}
+
+fn legacy_project_agents_dir() -> std::path::PathBuf {
+    std::path::PathBuf::from(LEGACY_PROJECT_AGENTS_DIR)
+}
+
+fn user_agents_dir() -> Option<std::path::PathBuf> {
+    dirs::home_dir().map(|home| home.join(".cortex/agents"))
+}
+
+fn legacy_user_agents_dir() -> Option<std::path::PathBuf> {
+    dirs::home_dir().map(|home| home.join(".factory/agents"))
+}
+
+fn writable_agents_dir(scope: &str) -> AppResult<std::path::PathBuf> {
+    if scope == "project" {
+        Ok(project_agents_dir())
+    } else {
+        user_agents_dir()
+            .ok_or_else(|| AppError::Internal("Cannot find home directory".to_string()))
+    }
+}
+
+fn search_agent_dirs() -> Vec<(std::path::PathBuf, &'static str)> {
+    let mut dirs = vec![
+        (project_agents_dir(), "project"),
+        (legacy_project_agents_dir(), "project"),
+    ];
+
+    if let Some(user_dir) = user_agents_dir() {
+        dirs.push((user_dir, "user"));
+    }
+    if let Some(user_dir) = legacy_user_agents_dir() {
+        dirs.push((user_dir, "user"));
+    }
+
+    dirs
+}
+
+fn agent_path_in(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    dir.join(format!("{}.md", name))
+}
+
 /// Read agent file from disk.
 fn read_agent_file(path: &std::path::Path, scope: &str) -> Option<AgentDefinition> {
     if path.extension().and_then(|e| e.to_str()) != Some("md") {
@@ -73,28 +121,17 @@ fn read_agent_file(path: &std::path::Path, scope: &str) -> Option<AgentDefinitio
 /// List all agents.
 pub async fn list_agents() -> AppResult<Json<Vec<AgentDefinition>>> {
     let mut agents = Vec::new();
+    let mut seen_names = std::collections::HashSet::new();
 
-    // Project agents (.factory/agents/)
-    let project_dir = std::path::Path::new(".factory/agents");
-    if project_dir.exists()
-        && let Ok(entries) = std::fs::read_dir(project_dir)
-    {
-        for entry in entries.flatten() {
-            if let Some(agent) = read_agent_file(&entry.path(), "project") {
-                agents.push(agent);
-            }
-        }
-    }
-
-    // User agents (~/.factory/agents/)
-    if let Some(home) = dirs::home_dir() {
-        let user_dir = home.join(".factory/agents");
-        if user_dir.exists()
-            && let Ok(entries) = std::fs::read_dir(&user_dir)
+    for (dir, scope) in search_agent_dirs() {
+        if dir.exists()
+            && let Ok(entries) = std::fs::read_dir(&dir)
         {
             for entry in entries.flatten() {
-                if let Some(agent) = read_agent_file(&entry.path(), "user") {
-                    agents.push(agent);
+                if let Some(agent) = read_agent_file(&entry.path(), scope) {
+                    if seen_names.insert(agent.name.clone()) {
+                        agents.push(agent);
+                    }
                 }
             }
         }
@@ -105,16 +142,9 @@ pub async fn list_agents() -> AppResult<Json<Vec<AgentDefinition>>> {
 
 /// Get a specific agent.
 pub async fn get_agent(Path(name): Path<String>) -> AppResult<Json<AgentDefinition>> {
-    // Check project first
-    let project_path = std::path::Path::new(".factory/agents").join(format!("{}.md", name));
-    if let Some(agent) = read_agent_file(&project_path, "project") {
-        return Ok(Json(agent));
-    }
-
-    // Check user
-    if let Some(home) = dirs::home_dir() {
-        let user_path = home.join(".factory/agents").join(format!("{}.md", name));
-        if let Some(agent) = read_agent_file(&user_path, "user") {
+    for (dir, scope) in search_agent_dirs() {
+        let path = agent_path_in(&dir, &name);
+        if let Some(agent) = read_agent_file(&path, scope) {
             return Ok(Json(agent));
         }
     }
@@ -124,13 +154,7 @@ pub async fn get_agent(Path(name): Path<String>) -> AppResult<Json<AgentDefiniti
 
 /// Create or update an agent.
 pub async fn create_agent(Json(req): Json<CreateAgentRequest>) -> AppResult<Json<AgentDefinition>> {
-    let dir = if req.scope == "project" {
-        std::path::PathBuf::from(".factory/agents")
-    } else {
-        dirs::home_dir()
-            .ok_or_else(|| AppError::Internal("Cannot find home directory".to_string()))?
-            .join(".factory/agents")
-    };
+    let dir = writable_agents_dir(&req.scope)?;
 
     std::fs::create_dir_all(&dir)
         .map_err(|e| AppError::Internal(format!("Failed to create directory: {}", e)))?;
@@ -169,19 +193,10 @@ pub async fn create_agent(Json(req): Json<CreateAgentRequest>) -> AppResult<Json
 
 /// Delete an agent.
 pub async fn delete_agent(Path(name): Path<String>) -> AppResult<Json<serde_json::Value>> {
-    // Try project first
-    let project_path = std::path::Path::new(".factory/agents").join(format!("{}.md", name));
-    if project_path.exists() {
-        std::fs::remove_file(&project_path)
-            .map_err(|e| AppError::Internal(format!("Failed to delete: {}", e)))?;
-        return Ok(Json(serde_json::json!({"deleted": true})));
-    }
-
-    // Try user
-    if let Some(home) = dirs::home_dir() {
-        let user_path = home.join(".factory/agents").join(format!("{}.md", name));
-        if user_path.exists() {
-            std::fs::remove_file(&user_path)
+    for (dir, _scope) in search_agent_dirs() {
+        let path = agent_path_in(&dir, &name);
+        if path.exists() {
+            std::fs::remove_file(&path)
                 .map_err(|e| AppError::Internal(format!("Failed to delete: {}", e)))?;
             return Ok(Json(serde_json::json!({"deleted": true})));
         }
@@ -229,21 +244,16 @@ pub async fn update_agent(
     Json(req): Json<UpdateAgentRequest>,
 ) -> AppResult<Json<AgentDefinition>> {
     // Find existing agent
-    let project_path = std::path::Path::new(".factory/agents").join(format!("{}.md", name));
-    let user_path =
-        dirs::home_dir().map(|h| h.join(".factory/agents").join(format!("{}.md", name)));
-
-    let (existing, path) = if let Some(agent) = read_agent_file(&project_path, "project") {
-        (agent, project_path)
-    } else if let Some(ref user_path) = user_path {
-        if let Some(agent) = read_agent_file(user_path, "user") {
-            (agent, user_path.clone())
-        } else {
-            return Err(AppError::NotFound(format!("Agent not found: {}", name)));
+    let mut found = None;
+    for (dir, scope) in search_agent_dirs() {
+        let path = agent_path_in(&dir, &name);
+        if let Some(agent) = read_agent_file(&path, scope) {
+            found = Some((agent, path));
+            break;
         }
-    } else {
-        return Err(AppError::NotFound(format!("Agent not found: {}", name)));
-    };
+    }
+    let (existing, path) =
+        found.ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", name)))?;
 
     // Merge updates
     let updated = AgentDefinition {
@@ -352,13 +362,7 @@ pub async fn import_agent(Json(req): Json<ImportAgentRequest>) -> AppResult<Json
     let (name, agent) = parse_agent_content(&req.content, &req.format)?;
 
     // Determine directory
-    let dir = if req.scope == "project" {
-        std::path::PathBuf::from(".factory/agents")
-    } else {
-        dirs::home_dir()
-            .ok_or_else(|| AppError::Internal("Cannot find home directory".to_string()))?
-            .join(".factory/agents")
-    };
+    let dir = writable_agents_dir(&req.scope)?;
 
     std::fs::create_dir_all(&dir)
         .map_err(|e| AppError::Internal(format!("Failed to create directory: {}", e)))?;
@@ -408,4 +412,50 @@ pub async fn generate_agent_prompt(
         model: "inherit".to_string(),
         permission_mode: "default".to_string(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_writable_project_agents_dir_uses_standard_loader_path() {
+        assert_eq!(
+            writable_agents_dir("project").unwrap(),
+            std::path::PathBuf::from(".cortex/agents")
+        );
+    }
+
+    #[test]
+    fn test_search_agent_dirs_include_standard_before_legacy_project_path() {
+        let dirs = search_agent_dirs();
+
+        assert_eq!(
+            dirs[0],
+            (std::path::PathBuf::from(".cortex/agents"), "project")
+        );
+        assert_eq!(
+            dirs[1],
+            (std::path::PathBuf::from(".factory/agents"), "project")
+        );
+    }
+
+    #[test]
+    fn test_read_agent_file_reads_standard_markdown_agent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("reviewer.md");
+        std::fs::write(
+            &path,
+            "---\ndescription: Code reviewer\ntools: [\"Read\", \"Grep\"]\nmodel: inherit\npermissionMode: default\n---\n\nReview code carefully.",
+        )
+        .unwrap();
+
+        let agent = read_agent_file(&path, "project").expect("agent should parse");
+
+        assert_eq!(agent.name, "reviewer");
+        assert_eq!(agent.description, "Code reviewer");
+        assert_eq!(agent.tools, vec!["Read", "Grep"]);
+        assert_eq!(agent.scope, "project");
+        assert_eq!(agent.prompt, "Review code carefully.");
+    }
 }

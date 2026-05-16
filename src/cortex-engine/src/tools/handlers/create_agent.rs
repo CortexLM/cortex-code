@@ -128,7 +128,7 @@ impl ToolHandler for CreateAgentHandler {
 
         // Use context.cwd for project location to avoid relying on process cwd
         let agents_dir = Self::get_agents_dir_with_cwd(location, &context.cwd)?;
-        let agent_path = agents_dir.join(format!("{}.toml", agent_name));
+        let agent_path = agents_dir.join(format!("{}.md", agent_name));
 
         if agent_path.exists() {
             return Err(CortexError::InvalidInput(format!(
@@ -139,18 +139,10 @@ impl ToolHandler for CreateAgentHandler {
 
         std::fs::create_dir_all(&agents_dir)?;
 
+        let description_yaml =
+            serde_json::to_string(description).unwrap_or_else(|_| format!("{description:?}"));
         let agent_content = format!(
-            r#"[agent]
-name = "{}"
-description = """
-{}
-"""
-
-# Add custom configuration here
-# [config]
-# key = "value"
-"#,
-            agent_name, description
+            "---\nname: {agent_name}\ndescription: {description_yaml}\nmodel: inherit\n---\n\n{description}\n"
         );
 
         std::fs::write(&agent_path, agent_content)?;
@@ -211,7 +203,7 @@ mod tests {
         let expected_name = CreateAgentHandler::sanitize_filename(description);
         let agent_path = temp_dir
             .path()
-            .join(format!(".cortex/agents/{}.toml", expected_name));
+            .join(format!(".cortex/agents/{}.md", expected_name));
         assert!(
             agent_path.exists(),
             "Agent file should exist at {:?}",
@@ -219,8 +211,18 @@ mod tests {
         );
 
         let content = std::fs::read_to_string(&agent_path).unwrap();
-        assert!(content.contains("name = \"process-and-transform-data-files\""));
+        assert!(content.contains("name: process-and-transform-data-files"));
+        assert!(content.contains("model: inherit"));
         assert!(content.contains("Process and transform data files"));
+
+        let loaded = cortex_agents_ext::custom::loader::sync::load_from_dir(
+            &temp_dir.path().join(".cortex/agents"),
+        )
+        .expect("standard loader should read created agent");
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].name, "process-and-transform-data-files");
+        assert_eq!(loaded[0].description, "Process and transform data files");
+        assert_eq!(loaded[0].model, "inherit");
     }
 
     #[tokio::test]
@@ -325,7 +327,7 @@ mod tests {
         let expected_name = CreateAgentHandler::sanitize_filename(description);
         let agent_path = temp_dir
             .path()
-            .join(format!(".cortex/agents/{}.toml", expected_name));
+            .join(format!(".cortex/agents/{}.md", expected_name));
         assert!(
             agent_path.exists(),
             "Agent file should exist at {:?}",
@@ -351,7 +353,7 @@ mod tests {
 
         let agent_path = temp_dir
             .path()
-            .join(".cortex/agents/duplicate-agent-test-case.toml");
+            .join(".cortex/agents/duplicate-agent-test-case.md");
         assert!(
             agent_path.exists(),
             "First agent file should exist at {:?}",
