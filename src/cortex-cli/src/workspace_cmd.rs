@@ -112,14 +112,17 @@ impl WorkspaceCli {
 /// Find workspace root by looking for .cortex directory or .git
 fn find_workspace_root() -> PathBuf {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    find_workspace_root_from(cwd)
+}
 
+fn find_workspace_root_from(cwd: PathBuf) -> PathBuf {
     let mut current = cwd.clone();
     loop {
         // Check for .cortex directory
-        if current.join(".cortex").exists() {
+        if current.join(".cortex").is_dir() {
             return current;
         }
-        // Check for .git directory (fallback root indicator)
+        // Check for .git marker (fallback root indicator; worktrees use a file)
         if current.join(".git").exists() {
             return current;
         }
@@ -417,6 +420,46 @@ async fn run_edit(args: WorkspaceEditArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    // ==========================================================================
+    // Workspace root detection tests
+    // ==========================================================================
+
+    #[test]
+    fn test_find_workspace_root_uses_cortex_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().join("root");
+        let nested = root.join("nested").join("sub");
+        std::fs::create_dir_all(root.join(".cortex")).unwrap();
+        std::fs::create_dir_all(&nested).unwrap();
+
+        assert_eq!(find_workspace_root_from(nested), root);
+    }
+
+    #[test]
+    fn test_find_workspace_root_ignores_cortex_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().join("root");
+        let nested = root.join("nested");
+        let subdir = nested.join("sub");
+        std::fs::create_dir_all(root.join(".cortex")).unwrap();
+        std::fs::create_dir_all(&subdir).unwrap();
+        std::fs::write(nested.join(".cortex"), "not a directory").unwrap();
+
+        assert_eq!(find_workspace_root_from(subdir), root);
+    }
+
+    #[test]
+    fn test_find_workspace_root_keeps_git_file_fallback() {
+        let temp_dir = TempDir::new().unwrap();
+        let root = temp_dir.path().join("root");
+        let nested = root.join("nested").join("sub");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(root.join(".git"), "gitdir: ../actual.git").unwrap();
+
+        assert_eq!(find_workspace_root_from(nested), root);
+    }
 
     // ==========================================================================
     // WorkspaceSettings tests
