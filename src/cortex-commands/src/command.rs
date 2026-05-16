@@ -209,8 +209,9 @@ pub fn substitute_placeholders(template: &str, arguments: &str) -> String {
     // Find the highest numbered placeholder
     let max_placeholder = find_max_placeholder(&result);
 
-    // Replace numbered placeholders
-    for i in 1..=max_placeholder {
+    // Replace numbered placeholders from longest to shortest so $1 does not
+    // rewrite the prefix of placeholders like $10 or $11.
+    for i in (1..=max_placeholder).rev() {
         let placeholder = format!("${i}");
         let replacement = if i == max_placeholder {
             // Last placeholder captures all remaining arguments
@@ -356,6 +357,28 @@ No closing delimiter"#;
         let result = substitute_placeholders(template, "one two");
 
         assert_eq!(result, "First: one, Second: two");
+    }
+
+    #[test]
+    fn test_substitute_two_digit_placeholder_before_prefix() {
+        let template = "Run $1 and item $10";
+        let result = substitute_placeholders(
+            template,
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa",
+        );
+
+        assert_eq!(result, "Run alpha and item kappa");
+    }
+
+    #[test]
+    fn test_substitute_two_digit_placeholder_captures_rest() {
+        let template = "First: $1, Tail: $10";
+        let result = substitute_placeholders(
+            template,
+            "one two three four five six seven eight nine ten eleven",
+        );
+
+        assert_eq!(result, "First: one, Tail: ten eleven");
     }
 
     #[test]
