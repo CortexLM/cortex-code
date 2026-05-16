@@ -140,7 +140,7 @@ async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
     let agents_path = root.join("AGENTS.md");
     let git_dir = root.join(".git");
 
-    let has_cortex_config = config_path.exists();
+    let has_cortex_config = config_path.is_file();
     let has_agents_md = agents_path.exists();
     let has_git = git_dir.exists();
 
@@ -150,14 +150,7 @@ async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
         .and_then(|n| n.to_str())
         .map(|s| s.to_string());
 
-    // Load settings if config exists
-    let settings = if has_cortex_config {
-        std::fs::read_to_string(&config_path)
-            .ok()
-            .and_then(|content| toml::from_str(&content).ok())
-    } else {
-        None
-    };
+    let settings = load_workspace_settings(&config_path);
 
     let info = WorkspaceInfo {
         root: root.clone(),
@@ -235,6 +228,16 @@ async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn load_workspace_settings(config_path: &PathBuf) -> Option<WorkspaceSettings> {
+    if !config_path.is_file() {
+        return None;
+    }
+
+    std::fs::read_to_string(config_path)
+        .ok()
+        .and_then(|content| toml::from_str(&content).ok())
 }
 
 async fn run_init(args: WorkspaceInitArgs) -> Result<()> {
@@ -417,6 +420,32 @@ async fn run_edit(args: WorkspaceEditArgs) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    // ==========================================================================
+    // Workspace config loading tests
+    // ==========================================================================
+
+    #[test]
+    fn test_load_workspace_settings_reads_config_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        std::fs::write(&config_path, r#"model = "gpt-4""#).unwrap();
+
+        let settings = load_workspace_settings(&config_path).unwrap();
+
+        assert_eq!(settings.model, Some("gpt-4".to_string()));
+    }
+
+    #[test]
+    fn test_load_workspace_settings_ignores_config_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        std::fs::create_dir_all(&config_path).unwrap();
+
+        assert!(!config_path.is_file());
+        assert!(load_workspace_settings(&config_path).is_none());
+    }
 
     // ==========================================================================
     // WorkspaceSettings tests
