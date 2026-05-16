@@ -531,7 +531,9 @@ fn parse_session_file(path: &PathBuf) -> Result<SessionData> {
 
     // Also check for aggregate usage at session level
     // Prefer session-level aggregate if available as it's more accurate
-    if let Some(usage) = json.get("usage") {
+    if data.message_count > 0
+        && let Some(usage) = json.get("usage")
+    {
         let session_input = usage
             .get("input_tokens")
             .or_else(|| usage.get("prompt_tokens"))
@@ -733,6 +735,36 @@ mod tests {
         // GPT-4o: $2.50/$10 per 1M
         let cost = calculate_cost("gpt-4o", 1_000_000, 1_000_000);
         assert!((cost - 12.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_session_file_ignores_usage_without_messages() -> Result<()> {
+        let path = std::env::temp_dir().join(format!(
+            "cortex-stats-usage-only-{}-{}.json",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+
+        std::fs::write(
+            &path,
+            r#"{
+                "created_at": "2026-05-17T00:00:00Z",
+                "model": "gpt-4o",
+                "usage": {
+                    "input_tokens": 1234,
+                    "output_tokens": 5678
+                }
+            }"#,
+        )?;
+
+        let session_data = parse_session_file(&path)?;
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(session_data.message_count, 0);
+        assert_eq!(session_data.input_tokens, 0);
+        assert_eq!(session_data.output_tokens, 0);
+
+        Ok(())
     }
 
     #[test]
