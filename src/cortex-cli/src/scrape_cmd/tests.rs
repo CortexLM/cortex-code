@@ -42,6 +42,25 @@ mod tests {
     }
 
     #[test]
+    fn test_html_to_markdown_table_includes_separator() {
+        let html = r#"
+            <table>
+                <thead>
+                    <tr><th>Name</th><th>Age</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Alice</td><td>30</td></tr>
+                </tbody>
+            </table>
+        "#;
+        let md = html_to_markdown(html, false, false);
+
+        assert!(md.contains("| Name | Age |"));
+        assert!(md.contains("| --- | --- |"));
+        assert!(md.contains("| Alice | 30 |"));
+    }
+
+    #[test]
     fn test_html_to_text() {
         let html = "<h1>Title</h1><p>Hello <strong>world</strong>!</p>";
         let text = html_to_text(html);

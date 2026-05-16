@@ -380,15 +380,11 @@ fn process_node_to_markdown(
                         // Tables
                         "table" => {
                             output.push_str("\n\n");
-                            process_node_to_markdown(
+                            output.push_str(&render_table_markdown(
                                 element_ref,
-                                output,
-                                list_depth,
-                                in_pre,
-                                in_code,
                                 no_images,
                                 no_links,
-                            );
+                            ));
                             output.push_str("\n\n");
                         }
                         "thead" | "tbody" | "tfoot" => {
@@ -446,6 +442,89 @@ fn process_node_to_markdown(
             _ => {}
         }
     }
+}
+
+fn render_table_markdown(table: scraper::ElementRef, no_images: bool, no_links: bool) -> String {
+    let mut rows = Vec::new();
+    collect_table_rows(table, &mut rows, no_images, no_links);
+
+    if rows.is_empty() {
+        return String::new();
+    }
+
+    let mut output = String::new();
+    for (row_index, row) in rows.iter().enumerate() {
+        output.push_str("| ");
+        output.push_str(&row.join(" | "));
+        output.push_str(" |\n");
+
+        if row_index == 0 {
+            output.push_str("| ");
+            output.push_str(&vec!["---"; row.len().max(1)].join(" | "));
+            output.push_str(" |\n");
+        }
+    }
+
+    output
+}
+
+fn collect_table_rows(
+    node: scraper::ElementRef,
+    rows: &mut Vec<Vec<String>>,
+    no_images: bool,
+    no_links: bool,
+) {
+    for child in node.children() {
+        if let Some(element_ref) = scraper::ElementRef::wrap(child) {
+            match element_ref.value().name.local.as_ref() {
+                "tr" => rows.push(collect_table_cells(element_ref, no_images, no_links)),
+                "thead" | "tbody" | "tfoot" => {
+                    collect_table_rows(element_ref, rows, no_images, no_links);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn collect_table_cells(row: scraper::ElementRef, no_images: bool, no_links: bool) -> Vec<String> {
+    let mut cells = Vec::new();
+
+    for child in row.children() {
+        if let Some(element_ref) = scraper::ElementRef::wrap(child)
+            && matches!(element_ref.value().name.local.as_ref(), "th" | "td")
+        {
+            cells.push(render_table_cell(element_ref, no_images, no_links));
+        }
+    }
+
+    cells
+}
+
+fn render_table_cell(cell: scraper::ElementRef, no_images: bool, no_links: bool) -> String {
+    let mut output = String::new();
+    let mut list_depth = 0;
+    let mut in_pre = false;
+    let mut in_code = false;
+
+    process_node_to_markdown(
+        cell,
+        &mut output,
+        &mut list_depth,
+        &mut in_pre,
+        &mut in_code,
+        no_images,
+        no_links,
+    );
+
+    clean_table_cell(&output)
+}
+
+fn clean_table_cell(cell: &str) -> String {
+    normalize_whitespace(&cell.replace('\n', " "))
+        .replace('|', "\\|")
+        .trim()
+        .to_string()
 }
 
 /// Convert HTML to plain text.
