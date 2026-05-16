@@ -57,18 +57,17 @@ pub async fn run_with_shutdown<F>(config: ServerConfig, shutdown: F) -> anyhow::
 where
     F: std::future::Future<Output = ()> + Send + 'static,
 {
+    let addr: SocketAddr = config.listen_addr.parse()?;
+
     // Warn if authentication is disabled
     if !config.auth.enabled {
-        warn!("Server running without authentication!");
-        warn!("Anyone on the network can access this server.");
-        warn!("Use --auth to enable authentication.");
+        warn_auth_disabled(addr);
     }
 
     let state = Arc::new(AppState::new(config.clone()).await?);
     let state_for_cleanup = Arc::clone(&state);
     let app = create_router_with_state(state);
 
-    let addr: SocketAddr = config.listen_addr.parse()?;
     info!("Starting Cortex server on {}", addr);
 
     // Start mDNS publisher if enabled
@@ -121,6 +120,20 @@ where
     Ok(())
 }
 
+fn warn_auth_disabled(addr: SocketAddr) {
+    warn!("Server running without authentication!");
+    warn!("{}", auth_disabled_exposure_warning(addr));
+    warn!("Use --auth to enable authentication.");
+}
+
+fn auth_disabled_exposure_warning(addr: SocketAddr) -> &'static str {
+    if addr.ip().is_loopback() {
+        "Only local processes can access this server."
+    } else {
+        "Anyone on the network can access this server."
+    }
+}
+
 /// Create the application router.
 pub fn create_router(state: AppState) -> Router {
     create_router_with_state(Arc::new(state))
@@ -142,4 +155,30 @@ pub fn create_router_with_state(state: Arc<AppState>) -> Router {
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::auth_disabled_exposure_warning;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+
+    #[test]
+    fn test_auth_disabled_exposure_warning_for_loopback_and_network_binds() {
+        let ipv4_loopback = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 3000);
+        let ipv6_loopback = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 3000);
+        let wildcard = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 3000);
+
+        assert_eq!(
+            auth_disabled_exposure_warning(ipv4_loopback),
+            "Only local processes can access this server."
+        );
+        assert_eq!(
+            auth_disabled_exposure_warning(ipv6_loopback),
+            "Only local processes can access this server."
+        );
+        assert_eq!(
+            auth_disabled_exposure_warning(wildcard),
+            "Anyone on the network can access this server."
+        );
+    }
 }
