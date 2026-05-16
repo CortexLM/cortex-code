@@ -96,6 +96,7 @@ pub fn is_dangerous_command(program: &str) -> bool {
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(program);
+    let program_name = normalize_program_name(program_name);
 
     // List of dangerous commands that should be blocked
     let blocked_commands = [
@@ -138,7 +139,14 @@ pub fn is_dangerous_command(program: &str) -> bool {
         "perl",         // Can execute arbitrary code
         "ruby",         // Can execute arbitrary code
         "node",         // Can execute arbitrary code
+        "nodejs",       // Can execute arbitrary code
         "php",          // Can execute arbitrary code
+        "env",          // Can execute blocked programs indirectly
+        "xargs",        // Can execute blocked programs from stdin/args
+        "watch",        // Can repeatedly execute blocked programs
+        "timeout",      // Can execute blocked programs with a timeout
+        "strace",       // Can execute blocked programs under tracing
+        "ltrace",       // Can execute blocked programs under tracing
         "bash",         // Shell (injection vector)
         "sh",           // Shell (injection vector)
         "zsh",          // Shell (injection vector)
@@ -169,7 +177,32 @@ pub fn is_dangerous_command(program: &str) -> bool {
         "firewall-cmd", // Firewalld
     ];
 
-    blocked_commands.contains(&program_name.to_lowercase().as_str())
+    blocked_commands.contains(&program_name.as_str())
+        || is_versioned_runtime(&program_name, "python")
+        || is_versioned_runtime(&program_name, "ruby")
+        || is_versioned_runtime(&program_name, "node")
+        || is_versioned_runtime(&program_name, "perl")
+        || is_versioned_runtime(&program_name, "php")
+}
+
+fn is_versioned_runtime(program_name: &str, runtime: &str) -> bool {
+    let Some(suffix) = program_name.strip_prefix(runtime) else {
+        return false;
+    };
+
+    suffix.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+}
+
+fn normalize_program_name(program_name: &str) -> String {
+    let lower = program_name.to_lowercase();
+
+    for extension in [".exe", ".cmd", ".bat", ".com"] {
+        if let Some(stripped) = lower.strip_suffix(extension) {
+            return stripped.to_string();
+        }
+    }
+
+    lower
 }
 
 /// Validate and resolve working directory.
@@ -229,9 +262,22 @@ mod tests {
         assert!(is_dangerous_command("/bin/rm"));
         assert!(is_dangerous_command("sudo"));
         assert!(is_dangerous_command("bash"));
+        assert!(is_dangerous_command("env"));
+        assert!(is_dangerous_command("env.exe"));
+        assert!(is_dangerous_command("timeout"));
         assert!(!is_dangerous_command("ls"));
         assert!(!is_dangerous_command("cat"));
         assert!(!is_dangerous_command("grep"));
+    }
+
+    #[test]
+    fn test_is_dangerous_command_blocks_runtime_bypasses() {
+        assert!(is_dangerous_command("python3.11"));
+        assert!(is_dangerous_command("/usr/local/bin/ruby3.2"));
+        assert!(is_dangerous_command("nodejs"));
+        assert!(is_dangerous_command("perl5"));
+        assert!(is_dangerous_command("php8.3"));
+        assert!(is_dangerous_command("python3.11.exe"));
     }
 
     #[test]

@@ -124,4 +124,21 @@ mod tests {
         assert!(result.success);
         assert!(result.output.contains("hello"));
     }
+
+    #[tokio::test]
+    async fn test_execute_shell_blocks_env_wrapper() {
+        let cwd = std::env::current_dir().unwrap();
+        let result = execute_shell(
+            &cwd,
+            60,
+            json!({ "command": ["env", "python3", "-c", "print('bypassed')"] }),
+        )
+        .await;
+
+        assert!(!result.success);
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Blocked dangerous command: env")
+        );
+    }
 }
