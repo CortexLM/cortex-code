@@ -3,8 +3,8 @@
 use crate::styled_output::{print_dim, print_error, print_info, print_success, print_warning};
 use cortex_common::CliConfigOverrides;
 use cortex_login::{
-    AuthMode, CredentialsStoreMode, SecureAuthData, load_auth_with_fallback, logout_with_fallback,
-    safe_format_key, save_auth_with_fallback,
+    AuthMode, CredentialsStoreMode, SecureAuthData, has_non_blank_token, load_auth_with_fallback,
+    logout_with_fallback, safe_format_key, save_auth_with_fallback,
 };
 use std::collections::HashSet;
 use std::io::{IsTerminal, Read};
@@ -132,7 +132,7 @@ pub async fn run_login_status(config_overrides: CliConfigOverrides) -> ! {
 
     // Check environment variables first (CORTEX_AUTH_TOKEN and CORTEX_API_KEY)
     if let Ok(token) = std::env::var("CORTEX_AUTH_TOKEN")
-        && !token.is_empty()
+        && has_non_blank_token(&token)
     {
         print_success(&format!(
             "Authenticated via CORTEX_AUTH_TOKEN environment variable: {}",
@@ -142,7 +142,7 @@ pub async fn run_login_status(config_overrides: CliConfigOverrides) -> ! {
     }
 
     if let Ok(token) = std::env::var("CORTEX_API_KEY")
-        && !token.is_empty()
+        && has_non_blank_token(&token)
     {
         print_success(&format!(
             "Authenticated via CORTEX_API_KEY environment variable: {}",

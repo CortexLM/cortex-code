@@ -44,7 +44,7 @@ use crate::error::{CortexError, Result};
 pub fn get_auth_token(instance_token: Option<&str>) -> Result<String> {
     // Priority 1: Instance token (if provided and non-empty)
     if let Some(token) = instance_token {
-        if !token.is_empty() {
+        if cortex_login::has_non_blank_token(token) {
             tracing::debug!(source = "instance", "Using auth token from client instance");
             return Ok(token.to_string());
         }
@@ -52,7 +52,7 @@ pub fn get_auth_token(instance_token: Option<&str>) -> Result<String> {
 
     // Priority 2: CORTEX_AUTH_TOKEN environment variable
     if let Ok(token) = std::env::var("CORTEX_AUTH_TOKEN") {
-        if !token.is_empty() {
+        if cortex_login::has_non_blank_token(&token) {
             tracing::debug!(
                 source = "env_var",
                 "Using auth token from CORTEX_AUTH_TOKEN"
@@ -63,7 +63,7 @@ pub fn get_auth_token(instance_token: Option<&str>) -> Result<String> {
 
     // Priority 3: CORTEX_API_KEY environment variable (alias for GitHub Actions workflow)
     if let Ok(token) = std::env::var("CORTEX_API_KEY") {
-        if !token.is_empty() {
+        if cortex_login::has_non_blank_token(&token) {
             tracing::debug!(source = "env_var", "Using auth token from CORTEX_API_KEY");
             return Ok(token);
         }
@@ -95,17 +95,20 @@ pub fn get_auth_token_optional(instance_token: Option<&str>) -> Option<String> {
 /// Useful for fast availability checks in UI.
 pub fn is_authenticated(instance_token: Option<&str>) -> bool {
     // Check instance token
-    if instance_token.map_or(false, |t| !t.is_empty()) {
+    if instance_token.is_some_and(cortex_login::has_non_blank_token) {
         return true;
     }
 
     // Check CORTEX_AUTH_TOKEN env var
-    if std::env::var("CORTEX_AUTH_TOKEN").map_or(false, |t| !t.is_empty()) {
+    if std::env::var("CORTEX_AUTH_TOKEN")
+        .is_ok_and(|token| cortex_login::has_non_blank_token(&token))
+    {
         return true;
     }
 
     // Check CORTEX_API_KEY env var (alias)
-    if std::env::var("CORTEX_API_KEY").map_or(false, |t| !t.is_empty()) {
+    if std::env::var("CORTEX_API_KEY").is_ok_and(|token| cortex_login::has_non_blank_token(&token))
+    {
         return true;
     }
 
@@ -142,6 +145,7 @@ mod tests {
     fn test_is_authenticated_with_instance() {
         assert!(is_authenticated(Some("token")));
         assert!(!is_authenticated(Some("")));
+        assert!(!is_authenticated(Some("   ")));
         assert!(!is_authenticated(None));
     }
 

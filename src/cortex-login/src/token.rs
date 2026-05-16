@@ -7,6 +7,7 @@ use crate::constants::{API_BASE_URL, USER_AGENT};
 use crate::keyring::save_to_keyring;
 use crate::storage::load_auth_with_fallback;
 use crate::types::{AuthMode, SecureAuthData};
+use crate::utils::has_non_blank_token;
 
 /// Refresh an expired access token using the refresh token.
 ///
@@ -71,7 +72,7 @@ fn refresh_token_sync(refresh_token: &str) -> Option<SecureAuthData> {
 pub fn get_auth_token() -> Option<String> {
     // Check environment variable first (highest priority for CI/CD)
     if let Ok(token) = std::env::var("CORTEX_API_KEY") {
-        if !token.is_empty() {
+        if has_non_blank_token(&token) {
             tracing::debug!("Using API key from CORTEX_API_KEY environment variable");
             return Some(token);
         }
