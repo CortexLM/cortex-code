@@ -184,6 +184,20 @@ fn custom_agent_to_agent_info(agent: &CustomAgentConfig) -> AgentInfo {
         }
     }
 
+    for tool in &allowed {
+        if tool.to_ascii_lowercase().starts_with("mcp__") {
+            info = info.enable_tool(tool);
+        }
+    }
+
+    if !matches!(
+        agent.tools,
+        ToolsConfig::Category(ToolCategory::Mcp | ToolCategory::All)
+    ) && !allowed.iter().any(|t| t.eq_ignore_ascii_case("mcp"))
+    {
+        info = info.disable_tool("mcp");
+    }
+
     info
 }
 
@@ -376,6 +390,63 @@ mod tests {
 
         let info = registry.to_agent_info("test").unwrap();
         assert!(info.model.is_none()); // Should not have a model set
+    }
+
+    #[test]
+    fn test_read_only_agent_disables_mcp_tools() {
+        let mut registry = CustomAgentRegistry::new();
+        registry.register(CustomAgentConfig::new("readonly").with_tools(ToolsConfig::read_only()));
+
+        let info = registry.to_agent_info("readonly").unwrap();
+
+        assert!(!info.is_tool_enabled("mcp"));
+        assert!(!info.is_tool_enabled("mcp__postgres__query"));
+        assert!(!info.is_tool_enabled("MCP__postgres__query"));
+        assert!(info.is_tool_enabled("read"));
+    }
+
+    #[test]
+    fn test_mcp_and_all_tool_configs_allow_mcp_tools() {
+        let mut registry = CustomAgentRegistry::new();
+        registry.register(
+            CustomAgentConfig::new("mcp-agent")
+                .with_tools(ToolsConfig::Category(ToolCategory::Mcp)),
+        );
+        registry.register(CustomAgentConfig::new("all-agent").with_tools(ToolsConfig::all()));
+
+        let mcp_info = registry.to_agent_info("mcp-agent").unwrap();
+        assert!(mcp_info.is_tool_enabled("mcp__postgres__query"));
+
+        let all_info = registry.to_agent_info("all-agent").unwrap();
+        assert!(all_info.is_tool_enabled("mcp__postgres__query"));
+    }
+
+    #[test]
+    fn test_custom_tools_list_can_allow_mcp_tools() {
+        let mut registry = CustomAgentRegistry::new();
+        registry.register(
+            CustomAgentConfig::new("custom-mcp").with_tools(ToolsConfig::custom(["Read", "mcp"])),
+        );
+
+        let info = registry.to_agent_info("custom-mcp").unwrap();
+
+        assert!(info.is_tool_enabled("mcp__postgres__query"));
+        assert!(info.is_tool_enabled("Read"));
+        assert!(!info.is_tool_enabled("Execute"));
+    }
+
+    #[test]
+    fn test_custom_tools_list_can_allow_single_mcp_tool() {
+        let mut registry = CustomAgentRegistry::new();
+        registry.register(
+            CustomAgentConfig::new("single-mcp")
+                .with_tools(ToolsConfig::custom(["Read", "mcp__postgres__query"])),
+        );
+
+        let info = registry.to_agent_info("single-mcp").unwrap();
+
+        assert!(info.is_tool_enabled("mcp__postgres__query"));
+        assert!(!info.is_tool_enabled("mcp__postgres__write"));
     }
 
     #[test]
