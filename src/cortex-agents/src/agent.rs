@@ -127,7 +127,19 @@ impl AgentInfo {
     }
 
     pub fn is_tool_enabled(&self, tool: &str) -> bool {
-        self.tools.get(tool).copied().unwrap_or(true)
+        if let Some(enabled) = self.tools.get(tool) {
+            return *enabled;
+        }
+
+        if tool.eq_ignore_ascii_case("mcp") {
+            return self.tools.get("mcp").copied().unwrap_or(true);
+        }
+
+        if tool.to_ascii_lowercase().starts_with("mcp__") {
+            return self.tools.get("mcp").copied().unwrap_or(true);
+        }
+
+        true
     }
 
     pub fn with_max_steps(mut self, max_steps: usize) -> Self {
