@@ -15,6 +15,7 @@ mod definitions;
 mod executor;
 mod filesystem;
 mod planning;
+mod preview;
 mod search;
 mod security;
 mod shell;

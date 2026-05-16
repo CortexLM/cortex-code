@@ -3,6 +3,7 @@
 use serde_json::Value;
 use tokio::process::Command;
 
+use super::preview::truncate_at_char_boundary;
 use super::types::ToolResult;
 
 /// Fetch content from a URL.
@@ -79,9 +80,10 @@ pub async fn fetch_url(args: Value) -> ToolResult {
 
     // Truncate for display if too long
     let truncated = if content.len() > 100_000 {
+        let preview = truncate_at_char_boundary(&content, 100_000);
         format!(
-            "{}...\n[Truncated at 100000 chars, full size: {} chars]",
-            &content[..100_000],
+            "{}...\n[Truncated at 100000 bytes, full size: {} bytes]",
+            preview,
             content.len()
         )
     } else {
@@ -124,7 +126,7 @@ pub async fn web_search(args: Value) -> ToolResult {
             let html = String::from_utf8_lossy(&output.stdout);
             // Simple extraction of text
             let truncated = if html.len() > 10_000 {
-                &html[..10_000]
+                truncate_at_char_boundary(&html, 10_000)
             } else {
                 &html
             };
