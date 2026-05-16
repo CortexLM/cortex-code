@@ -12,6 +12,8 @@ use cortex_engine::rollout::get_rollout_path;
 use cortex_engine::rollout::reader::{RolloutItem, get_session_meta, read_rollout};
 use cortex_protocol::{ConversationId, EventMsg};
 
+pub(crate) const AGENT_MENTION_REGEX: &str = r"@([a-zA-Z][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)*)";
+
 /// Export format for sessions.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, clap::ValueEnum)]
 pub enum ExportFormat {
@@ -358,8 +360,8 @@ fn extract_messages(
 fn extract_agent_refs(messages: &[ExportMessage]) -> Vec<String> {
     use std::collections::HashSet;
 
-    // Regex to match @agent mentions (e.g., @explore, @general, @my-custom-agent)
-    let re = regex::Regex::new(r"@([a-zA-Z][a-zA-Z0-9_-]*)").unwrap();
+    // Regex to match @agent mentions (e.g., @explore, @my-custom-agent, @acme.deploy)
+    let re = regex::Regex::new(AGENT_MENTION_REGEX).unwrap();
 
     let mut agent_refs: HashSet<String> = HashSet::new();
 
@@ -441,6 +443,28 @@ mod tests {
         assert!(refs.contains(&"explore".to_string()));
         assert!(refs.contains(&"research".to_string()));
         assert!(refs.contains(&"my-agent".to_string()));
+    }
+
+    #[test]
+    fn test_extract_agent_refs_with_dotted_names() {
+        let messages = vec![ExportMessage {
+            role: "user".to_string(),
+            content: "Run @acme.deploy, then @foo.bar. Keep @my-agent too.".to_string(),
+            tool_calls: None,
+            tool_call_id: None,
+            timestamp: None,
+        }];
+
+        let refs = extract_agent_refs(&messages);
+        assert_eq!(
+            refs,
+            vec![
+                "acme.deploy".to_string(),
+                "foo.bar".to_string(),
+                "my-agent".to_string()
+            ]
+        );
+        assert!(!refs.contains(&"acme".to_string()));
     }
 
     #[test]
