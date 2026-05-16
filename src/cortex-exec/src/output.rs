@@ -169,12 +169,55 @@ fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len])
+        let end = s
+            .char_indices()
+            .map(|(idx, _)| idx)
+            .take_while(|idx| *idx <= max_len)
+            .last()
+            .unwrap_or(0);
+
+        format!("{}...", &s[..end])
     }
 }
 
 impl Default for OutputWriter {
     fn default() -> Self {
         Self::new(OutputFormat::Text)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate;
+
+    #[test]
+    fn truncate_leaves_short_text_unchanged() {
+        assert_eq!(truncate("short", 100), "short");
+    }
+
+    #[test]
+    fn truncate_ascii_text() {
+        assert_eq!(truncate("hello world", 5), "hello...");
+    }
+
+    #[test]
+    fn truncate_multibyte_text_on_char_boundary() {
+        assert_eq!(
+            truncate(
+                "\u{65e5}\u{672c}\u{8a9e}\u{30d5}\u{30a1}\u{30a4}\u{30eb}",
+                10
+            ),
+            "\u{65e5}\u{672c}\u{8a9e}..."
+        );
+    }
+
+    #[test]
+    fn truncate_multibyte_text_before_first_char_boundary() {
+        assert_eq!(truncate("\u{65e5}\u{672c}\u{8a9e}", 1), "...");
+    }
+
+    #[test]
+    fn truncate_emoji_text_on_char_boundary() {
+        assert_eq!(truncate("abcd\u{1f600}efgh", 6), "abcd...");
     }
 }
