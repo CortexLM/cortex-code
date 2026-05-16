@@ -82,9 +82,15 @@ impl ExecCli {
 
         // Read from file if specified
         if let Some(ref file_path) = self.file {
-            let content = tokio::fs::read_to_string(file_path)
+            let resolved_file_path = resolve_prompt_file_path(file_path, self.cwd.as_ref());
+            let content = tokio::fs::read_to_string(&resolved_file_path)
                 .await
-                .with_context(|| format!("Failed to read prompt file: {}", file_path.display()))?;
+                .with_context(|| {
+                    format!(
+                        "Failed to read prompt file: {}",
+                        resolved_file_path.display()
+                    )
+                })?;
             prompt.push_str(&content);
         }
 
@@ -850,5 +856,48 @@ impl ExecCli {
         let _ = session_task.await;
 
         Ok(())
+    }
+}
+
+fn resolve_prompt_file_path(file_path: &std::path::Path, cwd: Option<&PathBuf>) -> PathBuf {
+    if file_path.is_absolute() {
+        return file_path.to_path_buf();
+    }
+
+    cwd.map_or_else(|| file_path.to_path_buf(), |cwd| cwd.join(file_path))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_prompt_file_path;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn resolves_relative_prompt_file_against_cwd() {
+        let cwd = PathBuf::from("/tmp/cortex_test/nested");
+
+        assert_eq!(
+            resolve_prompt_file_path(Path::new("script.sh"), Some(&cwd)),
+            cwd.join("script.sh")
+        );
+    }
+
+    #[test]
+    fn leaves_relative_prompt_file_relative_without_cwd() {
+        assert_eq!(
+            resolve_prompt_file_path(Path::new("script.sh"), None),
+            PathBuf::from("script.sh")
+        );
+    }
+
+    #[test]
+    fn leaves_absolute_prompt_file_unchanged() {
+        let path = if cfg!(windows) {
+            PathBuf::from(r"C:\tmp\script.sh")
+        } else {
+            PathBuf::from("/tmp/script.sh")
+        };
+
+        assert_eq!(resolve_prompt_file_path(&path, None), path);
     }
 }
