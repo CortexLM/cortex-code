@@ -16,7 +16,7 @@ use cortex_protocol::{
 };
 
 use crate::agent_cmd::load_all_agents;
-use crate::export_cmd::{ExportMessage, SessionExport};
+use crate::export_cmd::{AGENT_MENTION_REGEX, ExportMessage, SessionExport};
 
 /// Maximum depth for processing messages to prevent stack overflow from deeply nested structures.
 const MAX_PROCESSING_DEPTH: usize = 10000;
@@ -289,7 +289,7 @@ fn validate_agent_references(export: &SessionExport) -> Result<Vec<String>> {
     }
 
     // Also scan messages for @agent mentions (in case they weren't pre-extracted)
-    let re = regex::Regex::new(r"@([a-zA-Z][a-zA-Z0-9_-]*)").unwrap();
+    let re = regex::Regex::new(AGENT_MENTION_REGEX).unwrap();
     for message in &export.messages {
         for cap in re.captures_iter(&message.content) {
             if let Some(agent_name) = cap.get(1) {
@@ -648,6 +648,38 @@ mod tests {
         assert!(missing.contains(&"custom-nonexistent-agent".to_string()));
         assert!(missing.contains(&"another-nonexistent".to_string()));
         assert!(missing.contains(&"yet-another-missing".to_string()));
+    }
+
+    #[test]
+    fn test_validate_agent_references_with_dotted_missing_agent() {
+        use crate::export_cmd::SessionMetadata;
+
+        let export = SessionExport {
+            version: 1,
+            session: SessionMetadata {
+                id: "test-123".to_string(),
+                title: None,
+                created_at: "2024-01-01T00:00:00Z".to_string(),
+                cwd: None,
+                model: None,
+                agent: None,
+                agent_refs: None,
+            },
+            messages: vec![ExportMessage {
+                role: "user".to_string(),
+                content: "Please run @acme.deploy for me, then @foo.bar.".to_string(),
+                tool_calls: None,
+                tool_call_id: None,
+                timestamp: None,
+            }],
+        };
+
+        let missing = validate_agent_references(&export).unwrap();
+
+        assert!(missing.contains(&"acme.deploy".to_string()));
+        assert!(missing.contains(&"foo.bar".to_string()));
+        assert!(!missing.contains(&"acme".to_string()));
+        assert!(!missing.contains(&"foo".to_string()));
     }
 
     #[test]
