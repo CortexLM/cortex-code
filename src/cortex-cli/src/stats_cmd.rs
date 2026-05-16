@@ -363,10 +363,7 @@ async fn collect_stats(sessions_dir: &PathBuf, cli: &StatsCli) -> Result<UsageSt
         // Try to parse the session
         if let Ok(session_data) = parse_session_file(&path) {
             // Check if session is within date range
-            if let Some(ref timestamp) = session_data.timestamp
-                && let Ok(session_date) = chrono::DateTime::parse_from_rfc3339(timestamp)
-                && session_date < start_date
-            {
+            if !session_is_within_date_range(session_data.timestamp.as_deref(), &start_date) {
                 continue;
             }
 
@@ -428,6 +425,21 @@ async fn collect_stats(sessions_dir: &PathBuf, cli: &StatsCli) -> Result<UsageSt
     }
 
     Ok(stats)
+}
+
+fn session_is_within_date_range(
+    timestamp: Option<&str>,
+    start_date: &chrono::DateTime<chrono::Utc>,
+) -> bool {
+    let Some(timestamp) = timestamp else {
+        return false;
+    };
+
+    let Ok(session_date) = chrono::DateTime::parse_from_rfc3339(timestamp) else {
+        return false;
+    };
+
+    session_date.with_timezone(&chrono::Utc) >= *start_date
 }
 
 /// Session data extracted from file.
@@ -733,6 +745,77 @@ mod tests {
         // GPT-4o: $2.50/$10 per 1M
         let cost = calculate_cost("gpt-4o", 1_000_000, 1_000_000);
         assert!((cost - 12.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_session_date_range_requires_valid_timestamp() {
+        let start_date = chrono::Utc::now() - chrono::Duration::days(1);
+        let recent = chrono::Utc::now().to_rfc3339();
+        let old = (chrono::Utc::now() - chrono::Duration::days(2)).to_rfc3339();
+
+        assert!(session_is_within_date_range(Some(&recent), &start_date));
+        assert!(!session_is_within_date_range(Some(&old), &start_date));
+        assert!(!session_is_within_date_range(None, &start_date));
+        assert!(!session_is_within_date_range(
+            Some("not-a-date"),
+            &start_date
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_collect_stats_excludes_missing_and_invalid_timestamps() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let sessions_dir = temp_dir.path().to_path_buf();
+        let recent = chrono::Utc::now().to_rfc3339();
+
+        std::fs::write(
+            sessions_dir.join("recent.json"),
+            format!(
+                r#"{{
+                    "created_at": "{recent}",
+                    "model": "gpt-4o",
+                    "messages": [{{"role": "user", "content": "valid"}}],
+                    "usage": {{"input_tokens": 100, "output_tokens": 100}}
+                }}"#
+            ),
+        )
+        .unwrap();
+
+        std::fs::write(
+            sessions_dir.join("missing.json"),
+            r#"{
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": "missing timestamp"}],
+                "usage": {"input_tokens": 9999, "output_tokens": 9999}
+            }"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            sessions_dir.join("invalid.json"),
+            r#"{
+                "timestamp": "not-a-date",
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": "invalid timestamp"}],
+                "usage": {"input_tokens": 8888, "output_tokens": 8888}
+            }"#,
+        )
+        .unwrap();
+
+        let cli = StatsCli {
+            days: 1,
+            provider: None,
+            model: None,
+            json: false,
+            verbose: false,
+        };
+
+        let stats = collect_stats(&sessions_dir, &cli).await.unwrap();
+
+        assert_eq!(stats.total_sessions, 1);
+        assert_eq!(stats.total_messages, 1);
+        assert_eq!(stats.input_tokens, 100);
+        assert_eq!(stats.output_tokens, 100);
     }
 
     #[test]
