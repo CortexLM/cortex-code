@@ -322,14 +322,45 @@ fn collect_removal_items() -> Result<Vec<RemovalItem>> {
     // 2. Cortex home directory (~/.cortex)
     items.extend(collect_cortex_home_items(&home_dir)?);
 
-    // 3. Platform-specific locations
+    // 3. Cache-based logs directory used by the logs command
+    items.extend(collect_cache_log_items(get_cache_logs_dir()));
+
+    // 4. Platform-specific locations
     #[cfg(target_os = "windows")]
     items.extend(collect_windows_items()?);
 
-    // 4. Shell completions
+    // 5. Shell completions
     items.extend(collect_completion_items(&home_dir)?);
 
     Ok(items)
+}
+
+/// Get the cache-based logs directory used by the logs command.
+fn get_cache_logs_dir() -> PathBuf {
+    dirs::cache_dir()
+        .map(|c| c.join("cortex").join("logs"))
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .map(|h| h.join(".cache").join("cortex").join("logs"))
+                .unwrap_or_else(|| PathBuf::from(".cache/cortex/logs"))
+        })
+}
+
+/// Collect the cache-based logs directory.
+fn collect_cache_log_items(logs_dir: PathBuf) -> Vec<RemovalItem> {
+    let mut items = Vec::new();
+
+    if logs_dir.exists() {
+        items.push(RemovalItem {
+            path: logs_dir.clone(),
+            description: "Cache log files".to_string(),
+            size: get_dir_size(&logs_dir),
+            requires_sudo: false,
+            category: RemovalCategory::Data,
+        });
+    }
+
+    items
 }
 
 /// Collect binary installation locations.
@@ -818,14 +849,14 @@ fn validate_path_safety(path: &Path) -> Result<()> {
         bail!("Refusing to delete home directory");
     }
 
-    // Ensure path contains "Cortex" somewhere (sanity check)
-    if !path_str.to_lowercase().contains("Cortex") {
+    // Ensure path contains "cortex" somewhere (sanity check)
+    if !path_str.to_lowercase().contains("cortex") {
         // Allow common binary locations even without "Cortex" in parent path
         let is_binary = path
             .file_name()
             .map(|n| {
                 let name = n.to_string_lossy().to_lowercase();
-                name == "Cortex" || name == "cortex.exe" || name == "cortex.old"
+                name == "cortex" || name == "cortex.exe" || name == "cortex.old"
             })
             .unwrap_or(false);
 
@@ -962,6 +993,40 @@ mod tests {
             let binary_path = Path::new("C:\\Program Files\\cortex\\cortex.exe");
             let _ = validate_path_safety(binary_path); // May succeed or fail depending on path existence
         }
+    }
+
+    #[test]
+    fn test_collect_cache_log_items_includes_existing_logs_dir() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let logs_dir = temp.path().join("cortex").join("logs");
+        fs::create_dir_all(&logs_dir)?;
+        fs::write(logs_dir.join("debug.log"), b"hello")?;
+
+        let items = collect_cache_log_items(logs_dir.clone());
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].path, logs_dir);
+        assert_eq!(items[0].description, "Cache log files");
+        assert_eq!(items[0].category, RemovalCategory::Data);
+        assert_eq!(items[0].size, 5);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_collect_cache_log_items_skips_missing_logs_dir() {
+        let missing_logs_dir = std::env::temp_dir().join("cortex-missing-cache-logs");
+
+        let items = collect_cache_log_items(missing_logs_dir);
+
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_validate_path_safety_allows_lowercase_cortex_paths() {
+        let path = std::env::temp_dir().join("cortex").join("logs");
+
+        assert!(validate_path_safety(&path).is_ok());
     }
 
     #[test]
