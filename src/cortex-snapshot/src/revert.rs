@@ -189,7 +189,7 @@ impl RevertManager {
 
             if let Some(ref p) = point {
                 // Save everything after this point to redo stack
-                for i in (pos + 1)..self.history.len() {
+                for i in ((pos + 1)..self.history.len()).rev() {
                     if let Some(rp) = self.history.get(i).cloned() {
                         self.redo_stack.push(rp);
                     }
@@ -321,5 +321,57 @@ mod tests {
 
         // Verify can undo
         assert!(revert_manager.can_undo());
+    }
+
+    #[tokio::test]
+    async fn test_redo_after_revert_to_replays_checkpoints_in_order() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = TempDir::new().unwrap();
+
+        let snapshot_manager = SnapshotManager::new(temp_dir.path(), data_dir.path());
+        let mut revert_manager = RevertManager::new(snapshot_manager);
+        let test_file = temp_dir.path().join("test.txt");
+
+        tokio::fs::write(&test_file, "Version 1").await.unwrap();
+        let cp1 = revert_manager.checkpoint(Some("Version 1")).await.unwrap();
+
+        tokio::fs::write(&test_file, "Version 2").await.unwrap();
+        let cp2 = revert_manager.checkpoint(Some("Version 2")).await.unwrap();
+
+        tokio::fs::write(&test_file, "Version 3").await.unwrap();
+        let cp3 = revert_manager.checkpoint(Some("Version 3")).await.unwrap();
+
+        tokio::fs::write(&test_file, "Version 4").await.unwrap();
+        let cp4 = revert_manager.checkpoint(Some("Version 4")).await.unwrap();
+
+        let reverted = revert_manager.revert_to(&cp1.snapshot.id).await.unwrap();
+        assert_eq!(reverted.unwrap().snapshot.id, cp1.snapshot.id);
+        assert_eq!(
+            tokio::fs::read_to_string(&test_file).await.unwrap(),
+            "Version 1"
+        );
+
+        let redone = revert_manager.redo().await.unwrap();
+        assert_eq!(redone.unwrap().snapshot.id, cp2.snapshot.id);
+        assert_eq!(
+            tokio::fs::read_to_string(&test_file).await.unwrap(),
+            "Version 2"
+        );
+
+        let redone = revert_manager.redo().await.unwrap();
+        assert_eq!(redone.unwrap().snapshot.id, cp3.snapshot.id);
+        assert_eq!(
+            tokio::fs::read_to_string(&test_file).await.unwrap(),
+            "Version 3"
+        );
+
+        let redone = revert_manager.redo().await.unwrap();
+        assert_eq!(redone.unwrap().snapshot.id, cp4.snapshot.id);
+        assert_eq!(
+            tokio::fs::read_to_string(&test_file).await.unwrap(),
+            "Version 4"
+        );
+
+        assert!(revert_manager.redo().await.unwrap().is_none());
     }
 }
