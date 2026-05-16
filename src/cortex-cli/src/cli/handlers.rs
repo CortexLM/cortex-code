@@ -530,7 +530,7 @@ fn install_completions(shell: Shell) -> Result<()> {
 
 /// Show current logged-in user.
 pub async fn run_whoami() -> Result<()> {
-    use cortex_login::{AuthMode, load_auth_with_fallback, safe_format_key};
+    use cortex_login::{AuthMode, has_non_blank_token, load_auth_with_fallback, safe_format_key};
 
     let cortex_home = dirs::home_dir()
         .map(|h| h.join(".cortex"))
@@ -538,7 +538,7 @@ pub async fn run_whoami() -> Result<()> {
 
     // Check environment variables first
     if let Ok(token) = std::env::var("CORTEX_AUTH_TOKEN")
-        && !token.is_empty()
+        && has_non_blank_token(&token)
     {
         println!(
             "Authenticated via CORTEX_AUTH_TOKEN: {}",
@@ -548,7 +548,7 @@ pub async fn run_whoami() -> Result<()> {
     }
 
     if let Ok(token) = std::env::var("CORTEX_API_KEY")
-        && !token.is_empty()
+        && has_non_blank_token(&token)
     {
         println!(
             "Authenticated via CORTEX_API_KEY: {}",

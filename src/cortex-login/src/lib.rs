@@ -53,7 +53,7 @@ pub use keyring::{delete_from_keyring, load_from_keyring, save_to_keyring};
 pub use token::get_auth_token;
 
 // Re-exports from utils
-pub use utils::safe_format_key;
+pub use utils::{has_non_blank_token, safe_format_key};
 
 // Re-exports from device_code_auth
 pub use device_code_auth::run_device_code_login;

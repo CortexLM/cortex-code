@@ -13,6 +13,11 @@ pub fn safe_format_key(key: &str) -> String {
     format!("{prefix}***{suffix}")
 }
 
+/// Return true when a token contains at least one non-whitespace character.
+pub fn has_non_blank_token(token: &str) -> bool {
+    !token.trim().is_empty()
+}
+
 /// Set restrictive file permissions (0600 on Unix).
 pub fn set_file_permissions(path: &Path) -> Result<()> {
     #[cfg(unix)]
@@ -45,5 +50,13 @@ mod tests {
     fn test_safe_format_key_short() {
         let key = "sk-proj-12345";
         assert_eq!(safe_format_key(key), "***");
+    }
+
+    #[test]
+    fn test_has_non_blank_token() {
+        assert!(has_non_blank_token("ctx-token"));
+        assert!(has_non_blank_token("  ctx-token  "));
+        assert!(!has_non_blank_token(""));
+        assert!(!has_non_blank_token("   \t\n"));
     }
 }

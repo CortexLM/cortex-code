@@ -50,7 +50,9 @@ pub trait ModelClient: Send + Sync {
 fn get_auth_token() -> Result<String> {
     // First check environment variable
     if let Ok(token) = std::env::var("CORTEX_AUTH_TOKEN") {
-        return Ok(token);
+        if cortex_login::has_non_blank_token(&token) {
+            return Ok(token);
+        }
     }
 
     // Try to load from cortex-login keyring storage
@@ -78,7 +80,7 @@ pub fn create_client(
     _base_url: Option<&str>,
 ) -> Result<Box<dyn ModelClient>> {
     // Use provided api_key as auth token, or try to get from environment/keyring
-    let auth_token = if !api_key.is_empty() {
+    let auth_token = if cortex_login::has_non_blank_token(api_key) {
         api_key.to_string()
     } else {
         get_auth_token()?
