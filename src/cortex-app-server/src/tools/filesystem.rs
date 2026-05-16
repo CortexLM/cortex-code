@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+use super::preview::truncate_at_char_boundary;
 use super::types::ToolResult;
 
 /// Read file contents.
@@ -119,7 +120,7 @@ pub async fn write_file(cwd: &Path, args: Value) -> ToolResult {
                 "filename": std::path::Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(""),
                 "extension": extension,
                 "size": content.len(),
-                "content_preview": if content.len() > 500 { &content[..500] } else { content }
+                "content_preview": truncate_at_char_boundary(content, 500)
             })),
         },
         Err(e) => ToolResult::error(format!("Failed to write file: {e}")),
