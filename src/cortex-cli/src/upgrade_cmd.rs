@@ -99,8 +99,8 @@ impl UpgradeCli {
                 Ok(info) => Some(info),
                 Err(e) => {
                     // Check if user asked for current version (Issue #1968)
-                    let normalized_version = version.trim_start_matches('v');
-                    let normalized_current = CLI_VERSION.trim_start_matches('v');
+                    let normalized_version = normalize_version_input(version);
+                    let normalized_current = normalize_version_input(CLI_VERSION);
                     if normalized_version == normalized_current {
                         println!("\n✓ Already on version v{}. No action needed.", CLI_VERSION);
                         return Ok(());
@@ -217,8 +217,9 @@ impl UpgradeCli {
 /// Check for a specific version
 async fn check_specific_version(manager: &UpdateManager, version: &str) -> Result<UpdateInfo> {
     let client = cortex_update::CortexSoftwareClient::new();
+    let normalized_version = normalize_version_input(version);
     let release = client
-        .get_release(version)
+        .get_release(normalized_version)
         .await
         .context(format!("Version {} not found", version))?;
 
@@ -236,6 +237,10 @@ async fn check_specific_version(manager: &UpdateManager, version: &str) -> Resul
         asset: asset.clone(),
         install_method: manager.install_method(),
     })
+}
+
+fn normalize_version_input(version: &str) -> &str {
+    version.trim_start_matches(['v', 'V'])
 }
 
 /// Perform the actual upgrade
@@ -491,5 +496,12 @@ mod tests {
         assert_eq!(semver_compare("1.0.1", "1.0.0"), 1);
         assert_eq!(semver_compare("1.0.0", "2.0.0"), -1);
         assert_eq!(semver_compare("v1.0.0", "1.0.0"), 0);
+    }
+
+    #[test]
+    fn test_normalize_version_input() {
+        assert_eq!(normalize_version_input("0.0.7"), "0.0.7");
+        assert_eq!(normalize_version_input("v0.0.7"), "0.0.7");
+        assert_eq!(normalize_version_input("V0.0.7"), "0.0.7");
     }
 }
