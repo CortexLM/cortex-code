@@ -939,11 +939,11 @@ cp plugin.toml ~/.cortex/plugins/{}/
 
 impl PluginCli {
     /// Run the plugin command.
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, verbose: bool) -> Result<()> {
         match self.subcommand {
             PluginSubcommand::List(args) => run_list(args).await,
             PluginSubcommand::Install(args) => run_install(args).await,
-            PluginSubcommand::Remove(args) => run_remove(args).await,
+            PluginSubcommand::Remove(args) => run_remove(args, verbose).await,
             PluginSubcommand::Enable(args) => run_enable(args).await,
             PluginSubcommand::Disable(args) => run_disable(args).await,
             PluginSubcommand::Show(args) => run_show(args).await,
@@ -1143,7 +1143,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
     Ok(())
 }
 
-async fn run_remove(args: PluginRemoveArgs) -> Result<()> {
+async fn run_remove(args: PluginRemoveArgs, verbose: bool) -> Result<()> {
     let plugins_dir = get_plugins_dir();
     let plugin_path = plugins_dir.join(&args.name);
 
@@ -1164,9 +1164,47 @@ async fn run_remove(args: PluginRemoveArgs) -> Result<()> {
         }
     }
 
+    if verbose {
+        for line in plugin_remove_verbose_preflight_lines(&plugin_path, args.yes) {
+            println!("{line}");
+        }
+    }
+
     std::fs::remove_dir_all(&plugin_path)?;
     println!("Plugin '{}' removed successfully.", args.name);
+
+    if verbose {
+        for line in plugin_remove_verbose_completion_lines(&plugin_path, &plugins_dir) {
+            println!("{line}");
+        }
+    }
+
     Ok(())
+}
+
+fn plugin_remove_verbose_preflight_lines(plugin_path: &Path, yes: bool) -> Vec<String> {
+    vec![
+        format!("Plugin directory: {}", plugin_path.display()),
+        format!(
+            "Confirmation: {}",
+            if yes {
+                "skipped (--yes)"
+            } else {
+                "confirmed by prompt"
+            }
+        ),
+    ]
+}
+
+fn plugin_remove_verbose_completion_lines(plugin_path: &Path, plugins_dir: &Path) -> Vec<String> {
+    vec![
+        format!("Removed path: {}", plugin_path.display()),
+        format!(
+            "Plugin exists after removal: {}",
+            if plugin_path.exists() { "yes" } else { "no" }
+        ),
+        format!("Plugins directory: {}", plugins_dir.display()),
+    ]
 }
 
 async fn run_enable(args: PluginEnableArgs) -> Result<()> {
@@ -2456,6 +2494,35 @@ mod tests {
 
         assert_eq!(args.name, "remove-confirmed", "name should match");
         assert!(args.yes, "yes should be true when set");
+    }
+
+    #[test]
+    fn test_plugin_remove_verbose_lines_include_extra_context() {
+        let plugins_dir = PathBuf::from("cortex-plugins");
+        let plugin_path = plugins_dir.join("remove-me");
+
+        let preflight = plugin_remove_verbose_preflight_lines(&plugin_path, true);
+        assert_eq!(
+            preflight,
+            vec![
+                format!("Plugin directory: {}", plugin_path.display()),
+                "Confirmation: skipped (--yes)".to_string(),
+            ]
+        );
+
+        let completion = plugin_remove_verbose_completion_lines(&plugin_path, &plugins_dir);
+        assert!(
+            completion
+                .iter()
+                .any(|line| line == &format!("Removed path: {}", plugin_path.display())),
+            "completion output should include the removed plugin path"
+        );
+        assert!(
+            completion
+                .iter()
+                .any(|line| line == &format!("Plugins directory: {}", plugins_dir.display())),
+            "completion output should include the parent plugin directory"
+        );
     }
 
     // ==========================================================================

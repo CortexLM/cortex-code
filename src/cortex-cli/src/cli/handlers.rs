@@ -19,6 +19,8 @@ use crate::styled_output::{print_info, print_success, print_warning};
 ///
 /// This is the main command router for the CLI.
 pub async fn dispatch_command(cli: Cli) -> Result<()> {
+    let verbose = cli.verbose;
+
     match cli.command {
         None => run_tui(cli.interactive).await,
         Some(Commands::Init(init_cli)) => run_init(init_cli).await,
@@ -58,7 +60,7 @@ pub async fn dispatch_command(cli: Cli) -> Result<()> {
         Some(Commands::Debug(debug_cli)) => debug_cli.run().await,
         Some(Commands::Servers(servers_cli)) => run_servers(servers_cli).await,
         Some(Commands::History(history_cli)) => run_history(history_cli).await,
-        Some(Commands::Plugin(plugin_cli)) => plugin_cli.run().await,
+        Some(Commands::Plugin(plugin_cli)) => plugin_cli.run(verbose).await,
         Some(Commands::Feedback(feedback_cli)) => feedback_cli.run().await,
         Some(Commands::Lock(lock_cli)) => lock_cli.run().await,
         Some(Commands::Alias(alias_cli)) => alias_cli.run().await,
