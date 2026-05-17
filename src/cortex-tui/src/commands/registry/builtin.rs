@@ -582,12 +582,30 @@ pub fn register_builtin_commands(registry: &mut CommandRegistry) {
     ));
 
     registry.register(CommandDef::new(
+        "mcp-list",
+        &["mcp-ls"],
+        "List configured MCP servers",
+        "/mcp-list",
+        CommandCategory::Mcp,
+        false,
+    ));
+
+    registry.register(CommandDef::new(
         "mcp-auth",
         &["auth"],
         "MCP authentication management",
         "/mcp-auth",
         CommandCategory::Mcp,
         false,
+    ));
+
+    registry.register(CommandDef::new(
+        "mcp-remove",
+        &["mcp-rm"],
+        "Remove an MCP server",
+        "/mcp-remove",
+        CommandCategory::Mcp,
+        true,
     ));
 
     registry.register(CommandDef::new(

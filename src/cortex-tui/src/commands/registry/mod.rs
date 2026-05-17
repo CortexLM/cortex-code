@@ -78,19 +78,15 @@ mod tests {
 
         let general = registry.get_by_category(CommandCategory::General);
         assert!(!general.is_empty());
-        assert!(
-            general
-                .iter()
-                .all(|cmd| cmd.category == CommandCategory::General)
-        );
+        assert!(general
+            .iter()
+            .all(|cmd| cmd.category == CommandCategory::General));
 
         let session = registry.get_by_category(CommandCategory::Session);
         assert!(!session.is_empty());
-        assert!(
-            session
-                .iter()
-                .all(|cmd| cmd.category == CommandCategory::Session)
-        );
+        assert!(session
+            .iter()
+            .all(|cmd| cmd.category == CommandCategory::Session));
     }
 
     #[test]
@@ -194,7 +190,11 @@ mod tests {
         // MCP
         assert!(registry.exists("mcp"));
         assert!(registry.exists("mcp-tools"));
+        assert!(registry.exists("mcp-list"));
+        assert!(registry.exists("mcp-ls"));
         assert!(registry.exists("mcp-auth"));
+        assert!(registry.exists("mcp-remove"));
+        assert!(registry.exists("mcp-rm"));
         assert!(registry.exists("mcp-reload"));
 
         // Auth
