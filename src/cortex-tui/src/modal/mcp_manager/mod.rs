@@ -29,6 +29,10 @@ impl Modal for McpManagerModal {
 
     fn handle_paste(&mut self, text: &str) -> bool {
         match &mut self.mode {
+            McpMode::List => {
+                self.list.append_search_text(text);
+                true
+            }
             McpMode::AddStdioServer {
                 name,
                 command,
@@ -188,5 +192,39 @@ impl Modal for McpManagerModal {
 
     fn search_placeholder(&self) -> Option<&str> {
         Some("Search servers...")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_list_mode_paste_updates_search_query() {
+        let mut modal = McpManagerModal::new(vec![
+            McpServerInfo {
+                name: "filesystem".to_string(),
+                status: McpStatus::Running,
+                tool_count: 3,
+                error: None,
+                requires_auth: false,
+            },
+            McpServerInfo {
+                name: "github".to_string(),
+                status: McpStatus::Stopped,
+                tool_count: 8,
+                error: None,
+                requires_auth: false,
+            },
+        ]);
+
+        assert!(modal.handle_paste("git"));
+
+        assert_eq!(modal.list.search_query(), "git");
+        assert_eq!(modal.list.filtered_len(), 1);
+        assert_eq!(
+            modal.selected_server().map(|server| server.name.as_str()),
+            Some("github")
+        );
     }
 }
