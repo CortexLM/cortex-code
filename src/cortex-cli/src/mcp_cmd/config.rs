@@ -5,6 +5,13 @@
 
 use anyhow::{Context, Result};
 use cortex_engine::config::find_cortex_home;
+use std::path::Path;
+
+/// Parse MCP config TOML with the file path included in parse errors.
+pub(crate) fn parse_config_content(content: &str, config_path: &Path) -> Result<toml::Value> {
+    toml::from_str(content)
+        .with_context(|| format!("failed to parse config: {}", config_path.display()))
+}
 
 /// Load the config file as a toml::Value.
 pub(crate) fn load_config() -> Result<Option<toml::Value>> {
@@ -19,7 +26,7 @@ pub(crate) fn load_config() -> Result<Option<toml::Value>> {
     let content = std::fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read config: {}", config_path.display()))?;
 
-    let config: toml::Value = toml::from_str(&content).with_context(|| "failed to parse config")?;
+    let config = parse_config_content(&content, &config_path)?;
 
     Ok(Some(config))
 }
@@ -86,5 +93,18 @@ mod tests {
         let result = get_mcp_server("");
         assert!(result.is_ok());
         assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn test_parse_config_content_error_includes_path() {
+        let config_path = std::path::PathBuf::from("custom-cortex-home/config.toml");
+        let err = parse_config_content("invalid = [unclosed", &config_path)
+            .expect_err("invalid TOML should fail");
+        let message = err.to_string();
+
+        assert!(
+            message.contains("failed to parse config: custom-cortex-home/config.toml"),
+            "error should include config path, got: {message}"
+        );
     }
 }

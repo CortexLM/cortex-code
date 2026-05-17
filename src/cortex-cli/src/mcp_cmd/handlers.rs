@@ -8,7 +8,7 @@ use cortex_engine::config::find_cortex_home;
 use std::io::{self, BufRead, Write};
 
 use super::auth::{get_auth_status_for_display, remove_auth_silent};
-use super::config::{get_mcp_server, get_mcp_servers};
+use super::config::{get_mcp_server, get_mcp_servers, parse_config_content};
 use super::types::{
     AddArgs, AddMcpSseArgs, AddMcpStreamableHttpArgs, AddMcpTransportArgs, DisableArgs, EnableArgs,
     GetArgs, ListArgs, RemoveArgs, RenameArgs,
@@ -301,8 +301,7 @@ pub(crate) async fn run_add(args: AddArgs) -> Result<()> {
         if config_path.exists() {
             let content = std::fs::read_to_string(&config_path)
                 .with_context(|| format!("failed to read config: {}", config_path.display()))?;
-            let mut config: toml::Value =
-                toml::from_str(&content).with_context(|| "failed to parse config")?;
+            let mut config = parse_config_content(&content, &config_path)?;
 
             if let Some(mcp_servers) = config.get_mut("mcp_servers").and_then(|v| v.as_table_mut())
             {
@@ -576,8 +575,7 @@ pub(crate) async fn run_remove(args: RemoveArgs) -> Result<()> {
         .with_context(|| format!("failed to read config: {}", config_path.display()))?;
 
     // Parse the TOML and remove the server section
-    let mut config: toml::Value =
-        toml::from_str(&content).with_context(|| "failed to parse config")?;
+    let mut config = parse_config_content(&content, &config_path)?;
 
     if let Some(mcp_servers) = config.get_mut("mcp_servers").and_then(|v| v.as_table_mut()) {
         mcp_servers.remove(&name);
@@ -622,8 +620,7 @@ pub(crate) async fn run_enable(args: EnableArgs) -> Result<()> {
     let content = std::fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read config: {}", config_path.display()))?;
 
-    let mut config: toml::Value =
-        toml::from_str(&content).with_context(|| "failed to parse config")?;
+    let mut config = parse_config_content(&content, &config_path)?;
 
     if let Some(mcp_servers) = config.get_mut("mcp_servers").and_then(|v| v.as_table_mut())
         && let Some(server) = mcp_servers.get_mut(&args.name)
@@ -674,8 +671,7 @@ pub(crate) async fn run_disable(args: DisableArgs) -> Result<()> {
     let content = std::fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read config: {}", config_path.display()))?;
 
-    let mut config: toml::Value =
-        toml::from_str(&content).with_context(|| "failed to parse config")?;
+    let mut config = parse_config_content(&content, &config_path)?;
 
     if let Some(mcp_servers) = config.get_mut("mcp_servers").and_then(|v| v.as_table_mut())
         && let Some(server) = mcp_servers.get_mut(&args.name)
@@ -740,8 +736,7 @@ pub(crate) async fn run_rename(args: RenameArgs) -> Result<()> {
     let content = std::fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read config: {}", config_path.display()))?;
 
-    let mut config: toml::Value =
-        toml::from_str(&content).with_context(|| "failed to parse config")?;
+    let mut config = parse_config_content(&content, &config_path)?;
 
     if let Some(mcp_servers) = config.get_mut("mcp_servers").and_then(|v| v.as_table_mut())
         && let Some(server_config) = mcp_servers.remove(&args.old_name)
