@@ -7,6 +7,7 @@ use anyhow::{Result, bail};
 use cortex_engine::create_default_client;
 
 use super::config::{get_mcp_server, get_mcp_servers};
+use super::ellipsize_for_display;
 use super::types::{AuthCommand, AuthListArgs, AuthSubcommand, LogoutArgs};
 use super::validation::validate_server_name;
 
@@ -104,11 +105,7 @@ async fn run_auth_list(args: AuthListArgs) -> Result<()> {
         };
 
         // Truncate URL if too long
-        let display_url = if url.len() > 38 {
-            format!("{}...", &url[..35])
-        } else {
-            url.to_string()
-        };
+        let display_url = ellipsize_for_display(url, 38);
 
         println!("{name:<20} {display_status:<18} {display_url:<40}");
     }
