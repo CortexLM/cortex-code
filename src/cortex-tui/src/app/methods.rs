@@ -165,6 +165,8 @@ impl AppState {
 
     /// Handle Ctrl+C press (double-tap to quit)
     pub fn handle_ctrl_c(&mut self) -> bool {
+        self.reset_esc();
+
         let now = Instant::now();
         if let Some(last) = self.last_ctrl_c
             && now.duration_since(last) < Duration::from_millis(500)
@@ -183,6 +185,8 @@ impl AppState {
 
     /// Handle ESC press (double-tap to quit when idle)
     pub fn handle_esc(&mut self) -> bool {
+        self.reset_ctrl_c();
+
         let now = Instant::now();
         if let Some(last) = self.last_esc
             && now.duration_since(last) < Duration::from_millis(500)
@@ -197,6 +201,39 @@ impl AppState {
     /// Reset the ESC timer
     pub fn reset_esc(&mut self) {
         self.last_esc = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppState;
+
+    #[test]
+    fn test_esc_resets_ctrl_c_quit_confirmation() {
+        let mut app_state = AppState::new();
+
+        assert!(!app_state.handle_ctrl_c());
+        assert!(app_state.last_ctrl_c.is_some());
+
+        assert!(!app_state.handle_esc());
+        assert!(app_state.last_ctrl_c.is_none());
+
+        assert!(!app_state.handle_ctrl_c());
+        assert!(!app_state.should_quit());
+    }
+
+    #[test]
+    fn test_ctrl_c_resets_esc_quit_confirmation() {
+        let mut app_state = AppState::new();
+
+        assert!(!app_state.handle_esc());
+        assert!(app_state.last_esc.is_some());
+
+        assert!(!app_state.handle_ctrl_c());
+        assert!(app_state.last_esc.is_none());
+
+        assert!(!app_state.handle_esc());
+        assert!(!app_state.should_quit());
     }
 }
 
