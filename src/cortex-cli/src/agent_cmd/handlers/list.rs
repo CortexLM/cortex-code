@@ -98,8 +98,8 @@ pub async fn run_list(args: ListArgs) -> Result<()> {
             .description
             .as_ref()
             .map(|d| {
-                if d.len() > 38 {
-                    format!("{}...", &d[..35])
+                if d.chars().count() > 38 {
+                    format!("{}...", d.chars().take(35).collect::<String>())
                 } else {
                     d.clone()
                 }

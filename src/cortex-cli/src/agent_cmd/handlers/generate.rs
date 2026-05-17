@@ -117,11 +117,11 @@ pub async fn run_generate(args: CreateArgs) -> Result<()> {
         println!("  {}", "-".repeat(36));
 
         // Show truncated prompt
-        let prompt_preview = if generated.system_prompt.len() > 500 {
+        let prompt_preview = if generated.system_prompt.chars().count() > 500 {
             format!(
                 "{}...\n\n    (truncated, {} chars total)",
-                &generated.system_prompt[..500],
-                generated.system_prompt.len()
+                generated.system_prompt.chars().take(500).collect::<String>(),
+                generated.system_prompt.chars().count()
             )
         } else {
             generated.system_prompt.clone()
