@@ -5,7 +5,7 @@ use cortex_agents::task::{DagHydrator, DagStore, TaskStatus};
 use std::collections::HashMap;
 use std::io::{self, Write};
 
-use crate::styled_output::{print_error, print_info, print_success};
+use crate::styled_output::{print_error, print_info, print_success, println_success};
 
 use super::args::{
     DagCreateArgs, DagDeleteArgs, DagGraphArgs, DagListArgs, DagResumeArgs, DagRunArgs,
@@ -361,7 +361,7 @@ pub async fn run_validate(args: DagValidateArgs) -> Result<()> {
             // Verify topological sort works
             match dag.topological_sort() {
                 Ok(order) => {
-                    print_success(&format!(
+                    println_success(&format!(
                         "✓ DAG is valid ({} tasks, no cycles detected)",
                         dag.len()
                     ));
