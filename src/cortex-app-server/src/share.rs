@@ -22,6 +22,7 @@ use crate::storage::StoredMessage;
 /// Create share routes.
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .without_v07_checks()
         .route("/share", post(create_share))
         .route("/share/:token", get(get_shared_session))
         .route("/share/:token", delete(revoke_share))

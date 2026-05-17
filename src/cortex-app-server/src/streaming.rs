@@ -30,6 +30,7 @@ use crate::state::AppState;
 /// Create streaming API routes.
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .without_v07_checks()
         // CLI Session management
         .route("/cli/sessions", post(create_cli_session))
         .route("/cli/sessions", get(list_cli_sessions))

@@ -36,9 +36,8 @@ pub mod websocket;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{Router, middleware as axum_middleware};
 use tokio::net::TcpListener;
-use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{info, warn};
 
@@ -131,15 +130,171 @@ pub fn create_router(state: AppState) -> Router {
 /// This variant is useful when you need to keep a reference to the state
 /// for cleanup purposes (e.g., during graceful shutdown).
 pub fn create_router_with_state(state: Arc<AppState>) -> Router {
-    let api_routes = api::routes()
-        .merge(websocket::routes())
-        .merge(streaming::routes())
-        .merge(share::routes())
-        .merge(admin::routes());
+    let cors_layer = middleware::cors_layer(&state.config.cors_origins);
+
+    let api_routes = add_api_middleware(
+        api::routes()
+            .merge(websocket::routes())
+            .merge(streaming::routes())
+            .merge(share::routes())
+            .merge(admin::routes()),
+        Arc::clone(&state),
+    );
 
     Router::new()
+        .without_v07_checks()
         .nest("/api/v1", api_routes)
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
+        .layer(cors_layer)
         .with_state(state)
+}
+
+fn add_api_middleware(
+    router: Router<Arc<AppState>>,
+    state: Arc<AppState>,
+) -> Router<Arc<AppState>> {
+    router
+        .layer(axum_middleware::from_fn_with_state(
+            Arc::clone(&state),
+            middleware::rate_limit_middleware,
+        ))
+        .layer(axum_middleware::from_fn(
+            middleware::content_type_middleware,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            state,
+            middleware::timeout_middleware,
+        ))
+        .layer(axum_middleware::from_fn(
+            middleware::security_headers_middleware,
+        ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode, header},
+        routing::get,
+    };
+    use tower::ServiceExt;
+
+    async fn test_app(config: ServerConfig) -> Router {
+        let state = AppState::new(config).await.unwrap();
+        create_router(state)
+    }
+
+    async fn slow_test_handler() -> &'static str {
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        "done"
+    }
+
+    #[tokio::test]
+    async fn create_router_applies_security_headers_middleware() {
+        let app = test_app(ServerConfig::default()).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/models")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("X-Content-Type-Options").unwrap(),
+            "nosniff"
+        );
+        assert_eq!(response.headers().get("X-Frame-Options").unwrap(), "DENY");
+    }
+
+    #[tokio::test]
+    async fn create_router_applies_rate_limit_middleware() {
+        let mut config = ServerConfig::default();
+        config.rate_limit.requests_per_minute = 1;
+        config.rate_limit.burst_size = 1;
+        config.rate_limit.exempt_paths.clear();
+
+        let app = test_app(config).await;
+
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/models")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+
+        let second = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/models")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(second.headers().get(header::RETRY_AFTER).unwrap(), "60");
+        assert_eq!(
+            second.headers().get("X-Content-Type-Options").unwrap(),
+            "nosniff"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_router_applies_content_type_middleware() {
+        let app = test_app(ServerConfig::default()).await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/models")
+                    .header(header::CONTENT_TYPE, "text/plain")
+                    .body(Body::from("not json"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        assert_eq!(
+            response.headers().get("X-Content-Type-Options").unwrap(),
+            "nosniff"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_router_applies_timeout_middleware() {
+        let mut config = ServerConfig::default();
+        config.request_timeout = 0;
+        config.rate_limit.enabled = false;
+
+        let state = Arc::new(AppState::new(config).await.unwrap());
+        let app = add_api_middleware(
+            Router::new().route("/slow", get(slow_test_handler)),
+            Arc::clone(&state),
+        )
+        .with_state(state);
+
+        let response = app
+            .oneshot(Request::builder().uri("/slow").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+        assert_eq!(
+            response.headers().get("X-Content-Type-Options").unwrap(),
+            "nosniff"
+        );
+    }
 }

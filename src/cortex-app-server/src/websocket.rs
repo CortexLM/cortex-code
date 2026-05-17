@@ -28,6 +28,7 @@ use crate::state::AppState;
 /// Create WebSocket routes.
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .without_v07_checks()
         .route("/ws", get(websocket_handler))
         .route("/ws/sessions/:id", get(session_websocket_handler))
 }
