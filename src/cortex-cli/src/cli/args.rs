@@ -187,7 +187,7 @@ pub struct InteractiveArgs {
     )]
     pub dangerously_bypass_approvals_and_sandbox: bool,
 
-    /// Tell the agent to use the specified directory as its working root
+    /// Tell the agent to use the specified directory as its working directory
     #[arg(
         long = "cd",
         short = 'C',
@@ -857,6 +857,7 @@ pub struct HistoryClearArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
     use clap::Parser;
 
     // ==========================================================================
@@ -967,6 +968,14 @@ mod tests {
         assert_eq!(args.log_level, LogLevel::Info);
         assert!(!args.debug);
         assert!(args.prompt.is_empty());
+    }
+
+    #[test]
+    fn test_cd_help_uses_working_directory() {
+        let help = Cli::command().render_long_help().to_string();
+
+        assert!(help.contains("working directory"));
+        assert!(!help.contains("working root"));
     }
 
     // ==========================================================================
