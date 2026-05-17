@@ -324,6 +324,16 @@ impl SelectionList {
         &self.search_query
     }
 
+    /// Append text to the current search query and update filtered items.
+    pub fn append_search_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
+        self.search_query.push_str(text);
+        self.apply_filter();
+    }
+
     /// Get the number of filtered items.
     pub fn filtered_len(&self) -> usize {
         self.filtered_indices.len()
