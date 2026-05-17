@@ -38,6 +38,7 @@ pub use types::{
 /// Create the API routes.
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .without_v07_checks()
         // Health and metrics
         .route("/health", get(health::health_check))
         .route("/metrics", get(health::get_metrics))

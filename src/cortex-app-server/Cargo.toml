@@ -73,3 +73,4 @@ gethostname = "0.5"
 
 [dev-dependencies]
 tokio-test = { workspace = true }
+tower = { version = "0.5", default-features = false, features = ["util"] }
