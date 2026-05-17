@@ -39,8 +39,8 @@ pub struct ExportCommand {
     #[arg(short, long, value_enum, default_value_t = ExportFormat::Json)]
     pub format: ExportFormat,
 
-    /// Pretty-print the output (for json/yaml)
-    #[arg(long, default_value_t = true)]
+    /// Pretty-print JSON output
+    #[arg(long)]
     pub pretty: bool,
 }
 
@@ -111,6 +111,8 @@ pub struct ExportToolCall {
 impl ExportCommand {
     /// Run the export command.
     pub async fn run(self) -> Result<()> {
+        validate_export_options(self.format, self.pretty)?;
+
         let cortex_home = dirs::home_dir()
             .map(|h| h.join(".cortex"))
             .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
@@ -199,31 +201,7 @@ impl ExportCommand {
             messages: messages.clone(),
         };
 
-        // Serialize to the requested format
-        let output_content = match self.format {
-            ExportFormat::Json => {
-                if self.pretty {
-                    serde_json::to_string_pretty(&export)?
-                } else {
-                    serde_json::to_string(&export)?
-                }
-            }
-            ExportFormat::Yaml => {
-                serde_yaml::to_string(&export).with_context(|| "Failed to serialize to YAML")?
-            }
-            ExportFormat::Csv => {
-                // CSV format: simplified, messages only
-                let mut csv_output = String::new();
-                csv_output.push_str("timestamp,role,content\n");
-                for msg in &messages {
-                    let timestamp = msg.timestamp.as_deref().unwrap_or("");
-                    // Escape CSV content: double quotes, wrap in quotes if contains comma/newline
-                    let content = escape_csv_field(&msg.content);
-                    csv_output.push_str(&format!("{},{},{}\n", timestamp, msg.role, content));
-                }
-                csv_output
-            }
-        };
+        let output_content = serialize_export(&export, self.format, self.pretty)?;
 
         // Write to output
         match self.output {
@@ -239,6 +217,43 @@ impl ExportCommand {
 
         Ok(())
     }
+}
+
+/// Serialize an export in the requested format.
+fn serialize_export(export: &SessionExport, format: ExportFormat, pretty: bool) -> Result<String> {
+    validate_export_options(format, pretty)?;
+
+    match format {
+        ExportFormat::Json => {
+            if pretty {
+                serde_json::to_string_pretty(export).map_err(Into::into)
+            } else {
+                serde_json::to_string(export).map_err(Into::into)
+            }
+        }
+        ExportFormat::Yaml => {
+            serde_yaml::to_string(export).with_context(|| "Failed to serialize to YAML")
+        }
+        ExportFormat::Csv => {
+            let mut csv_output = String::new();
+            csv_output.push_str("timestamp,role,content\n");
+            for msg in &export.messages {
+                let timestamp = msg.timestamp.as_deref().unwrap_or("");
+                let content = escape_csv_field(&msg.content);
+                csv_output.push_str(&format!("{},{},{}\n", timestamp, msg.role, content));
+            }
+            Ok(csv_output)
+        }
+    }
+}
+
+/// Validate option combinations that depend on the selected export format.
+fn validate_export_options(format: ExportFormat, pretty: bool) -> Result<()> {
+    if pretty && format != ExportFormat::Json {
+        bail!("--pretty is only supported with --format json");
+    }
+
+    Ok(())
 }
 
 /// Escape a field for CSV output.
@@ -379,10 +394,10 @@ fn extract_agent_refs(messages: &[ExportMessage]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
-    #[test]
-    fn test_session_export_serialization() {
-        let export = SessionExport {
+    fn sample_export() -> SessionExport {
+        SessionExport {
             version: 1,
             session: SessionMetadata {
                 id: "test-id".to_string(),
@@ -409,12 +424,66 @@ mod tests {
                     timestamp: Some("2024-01-01T00:00:02Z".to_string()),
                 },
             ],
-        };
+        }
+    }
+
+    #[test]
+    fn test_session_export_serialization() {
+        let export = sample_export();
 
         let json = serde_json::to_string_pretty(&export).unwrap();
         assert!(json.contains("\"version\": 1"));
         assert!(json.contains("\"role\": \"user\""));
         assert!(json.contains("\"content\": \"Hello\""));
+    }
+
+    #[test]
+    fn test_export_pretty_flag_defaults_to_false() {
+        let cmd = ExportCommand::try_parse_from(["export", "session-123"]).unwrap();
+        assert!(!cmd.pretty);
+    }
+
+    #[test]
+    fn test_serialize_json_defaults_to_compact() {
+        let json = serialize_export(&sample_export(), ExportFormat::Json, false).unwrap();
+
+        assert!(json.starts_with("{\"version\":1,"));
+        assert!(!json.contains('\n'));
+    }
+
+    #[test]
+    fn test_serialize_json_pretty_prints_when_requested() {
+        let json = serialize_export(&sample_export(), ExportFormat::Json, true).unwrap();
+
+        assert!(json.starts_with("{\n"));
+        assert!(json.contains("  \"version\": 1"));
+    }
+
+    #[test]
+    fn test_pretty_is_rejected_for_yaml_and_csv() {
+        let yaml_error = serialize_export(&sample_export(), ExportFormat::Yaml, true).unwrap_err();
+        assert!(
+            yaml_error
+                .to_string()
+                .contains("--pretty is only supported with --format json")
+        );
+
+        let csv_error = serialize_export(&sample_export(), ExportFormat::Csv, true).unwrap_err();
+        assert!(
+            csv_error
+                .to_string()
+                .contains("--pretty is only supported with --format json")
+        );
+    }
+
+    #[test]
+    fn test_pretty_option_validation_runs_before_serialization() {
+        let error = validate_export_options(ExportFormat::Yaml, true).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("--pretty is only supported with --format json")
+        );
     }
 
     #[test]
