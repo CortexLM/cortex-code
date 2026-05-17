@@ -18,6 +18,13 @@ use super::validation::{
     validate_env_var_value, validate_server_name, validate_url, validate_url_internal,
 };
 
+fn existing_server_advice(name: &str) -> String {
+    format!(
+        "MCP server '{}' already exists. Use --force to overwrite, or 'cortex mcp remove {}' first.",
+        name, name
+    )
+}
+
 /// Run the list command.
 pub(crate) async fn run_list(args: ListArgs) -> Result<()> {
     let servers = get_mcp_servers()?;
@@ -253,11 +260,7 @@ pub(crate) async fn run_add(args: AddArgs) -> Result<()> {
     // Check if server already exists
     let server_exists = get_mcp_server(&name)?.is_some();
     if server_exists && !force {
-        bail!(
-            "MCP server '{}' already exists. Use --force to overwrite, or 'cortex mcp remove {}' first.",
-            name,
-            name
-        );
+        bail!("{}", existing_server_advice(&name));
     }
 
     // Check for conflicting transport types
@@ -722,11 +725,8 @@ pub(crate) async fn run_rename(args: RenameArgs) -> Result<()> {
     }
 
     // Check if new name already exists
-    if get_mcp_server(&args.new_name)?.is_some() {
-        bail!(
-            "MCP server '{}' already exists. Remove it first or choose a different name.",
-            args.new_name
-        );
+    if get_mcp_server(&args.new_name)?.is_some() && !args.force {
+        bail!("{}", existing_server_advice(&args.new_name));
     }
 
     let cortex_home =
@@ -746,6 +746,9 @@ pub(crate) async fn run_rename(args: RenameArgs) -> Result<()> {
     if let Some(mcp_servers) = config.get_mut("mcp_servers").and_then(|v| v.as_table_mut())
         && let Some(server_config) = mcp_servers.remove(&args.old_name)
     {
+        if args.force {
+            mcp_servers.remove(&args.new_name);
+        }
         mcp_servers.insert(args.new_name.clone(), server_config);
     }
 
@@ -889,9 +892,11 @@ mod tests {
         let args = RenameArgs {
             old_name: "old-name".to_string(),
             new_name: "new-name".to_string(),
+            force: false,
         };
         assert_eq!(args.old_name, "old-name");
         assert_eq!(args.new_name, "new-name");
+        assert!(!args.force);
     }
 
     #[test]
@@ -899,8 +904,17 @@ mod tests {
         let args = RenameArgs {
             old_name: "same".to_string(),
             new_name: "same".to_string(),
+            force: false,
         };
         assert_eq!(args.old_name, args.new_name);
+    }
+
+    #[test]
+    fn test_existing_server_advice_is_shared_by_add_and_rename() {
+        assert_eq!(
+            existing_server_advice("my-server"),
+            "MCP server 'my-server' already exists. Use --force to overwrite, or 'cortex mcp remove my-server' first."
+        );
     }
 
     // ========================================================================

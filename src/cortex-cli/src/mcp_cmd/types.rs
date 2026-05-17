@@ -24,7 +24,6 @@ pub enum McpSubcommand {
     List(ListArgs),
 
     /// List configured MCP servers (alias for list).
-    #[command(visible_alias = "ls")]
     Ls(ListArgs),
 
     /// Show details for a configured MCP server.
@@ -116,7 +115,7 @@ pub struct AddArgs {
 #[command(
     group(
         ArgGroup::new("transport")
-            .args(["command", "url", "sse"])
+            .args(["command", "url", "sse_url"])
             .required(true)
             .multiple(false)
     )
@@ -174,7 +173,7 @@ pub struct AddMcpSseArgs {
     #[arg(
         long = "sse-bearer-token-env-var",
         value_name = "ENV_VAR",
-        requires = "sse"
+        requires = "sse_url"
     )]
     pub sse_bearer_token_env_var: Option<String>,
 }
@@ -213,6 +212,10 @@ pub struct RenameArgs {
 
     /// New name for the MCP server.
     pub new_name: String,
+
+    /// Overwrite an existing server with the new name.
+    #[arg(long, short = 'f')]
+    pub force: bool,
 }
 
 /// Auth command with subcommands.
@@ -293,6 +296,7 @@ pub struct DebugArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
 
     // =========================================================================
     // ListArgs tests
@@ -666,9 +670,11 @@ mod tests {
         let args = RenameArgs {
             old_name: "old-server".to_string(),
             new_name: "new-server".to_string(),
+            force: false,
         };
         assert_eq!(args.old_name, "old-server");
         assert_eq!(args.new_name, "new-server");
+        assert!(!args.force);
     }
 
     #[test]
@@ -676,8 +682,19 @@ mod tests {
         let args = RenameArgs {
             old_name: "server".to_string(),
             new_name: "server".to_string(),
+            force: false,
         };
         assert_eq!(args.old_name, args.new_name);
+    }
+
+    #[test]
+    fn test_rename_args_force_flag() {
+        let args = RenameArgs {
+            old_name: "old-server".to_string(),
+            new_name: "existing-server".to_string(),
+            force: true,
+        };
+        assert!(args.force);
     }
 
     // =========================================================================
@@ -898,6 +915,11 @@ mod tests {
     }
 
     #[test]
+    fn test_mcp_cli_command_aliases_are_valid() {
+        McpCli::command().debug_assert();
+    }
+
+    #[test]
     fn test_subcommand_get_variant() {
         let subcommand = McpSubcommand::Get(GetArgs {
             name: "server".to_string(),
@@ -951,6 +973,7 @@ mod tests {
         let subcommand = McpSubcommand::Rename(RenameArgs {
             old_name: "old".to_string(),
             new_name: "new".to_string(),
+            force: false,
         });
         assert!(matches!(subcommand, McpSubcommand::Rename(_)));
     }
