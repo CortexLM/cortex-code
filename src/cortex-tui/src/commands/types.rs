@@ -40,7 +40,7 @@ impl CommandCategory {
             CommandCategory::General => "General",
             CommandCategory::Auth => "Auth",
             CommandCategory::Billing => "Billing",
-            CommandCategory::Session => "Session",
+            CommandCategory::Session => "Sessions",
             CommandCategory::Navigation => "Navigation",
             CommandCategory::Files => "Files",
             CommandCategory::Model => "Model",
@@ -55,7 +55,7 @@ impl CommandCategory {
             CommandCategory::General => "General application commands",
             CommandCategory::Auth => "Authentication and account management",
             CommandCategory::Billing => "Billing, usage, and subscription information",
-            CommandCategory::Session => "Session and conversation management",
+            CommandCategory::Session => "Sessions and conversation management",
             CommandCategory::Navigation => "Navigate through content and history",
             CommandCategory::Files => "File and context management",
             CommandCategory::Model => "Model and provider configuration",
@@ -451,6 +451,7 @@ mod tests {
     #[test]
     fn test_command_category_name() {
         assert_eq!(CommandCategory::General.name(), "General");
+        assert_eq!(CommandCategory::Session.name(), "Sessions");
         assert_eq!(CommandCategory::Mcp.name(), "MCP");
     }
 

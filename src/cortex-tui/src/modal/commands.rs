@@ -40,7 +40,7 @@ impl CommandCategory {
     /// Returns the display name for the category.
     pub fn display_name(&self) -> &'static str {
         match self {
-            CommandCategory::Session => "Session",
+            CommandCategory::Session => "Sessions",
             CommandCategory::Model => "Model",
             CommandCategory::View => "View",
             CommandCategory::Settings => "Settings",
@@ -712,7 +712,7 @@ mod tests {
 
     #[test]
     fn test_command_category_display_name() {
-        assert_eq!(CommandCategory::Session.display_name(), "Session");
+        assert_eq!(CommandCategory::Session.display_name(), "Sessions");
         assert_eq!(CommandCategory::Model.display_name(), "Model");
         assert_eq!(CommandCategory::View.display_name(), "View");
         assert_eq!(CommandCategory::Settings.display_name(), "Settings");
