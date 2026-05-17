@@ -9,6 +9,7 @@ use std::io::{self, BufRead, Write};
 
 use super::auth::{get_auth_status_for_display, remove_auth_silent};
 use super::config::{get_mcp_server, get_mcp_servers};
+use super::ellipsize_for_display;
 use super::types::{
     AddArgs, AddMcpSseArgs, AddMcpStreamableHttpArgs, AddMcpTransportArgs, DisableArgs, EnableArgs,
     GetArgs, ListArgs, RemoveArgs, RenameArgs,
@@ -80,11 +81,7 @@ pub(crate) async fn run_list(args: ListArgs) -> Result<()> {
                         .and_then(|v| v.as_str())
                         .unwrap_or("?");
                     // Truncate long commands with ellipsis indicator
-                    let transport_str = if cmd.len() > 22 {
-                        format!("stdio: {}...", &cmd[..19])
-                    } else {
-                        format!("stdio: {cmd}")
-                    };
+                    let transport_str = format!("stdio: {}", ellipsize_for_display(cmd, 22));
                     (transport_str, "N/A".to_string())
                 }
                 "http" => {
@@ -94,11 +91,7 @@ pub(crate) async fn run_list(args: ListArgs) -> Result<()> {
                         .await
                         .unwrap_or_else(|_| "Unknown".to_string());
                     // Truncate URL if too long with ellipsis indicator
-                    let transport_str = if url.len() > 25 {
-                        format!("http: {}...", &url[..22])
-                    } else {
-                        format!("http: {url}")
-                    };
+                    let transport_str = format!("http: {}", ellipsize_for_display(url, 25));
                     (transport_str, auth)
                 }
                 _ => (transport_type.to_string(), "N/A".to_string()),
