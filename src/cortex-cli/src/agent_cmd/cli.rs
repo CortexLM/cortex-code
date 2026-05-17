@@ -184,6 +184,10 @@ pub struct CopyArgs {
     /// Force overwrite if destination agent already exists.
     #[arg(short, long)]
     pub force: bool,
+
+    /// Show what would be copied without writing the destination file.
+    #[arg(long = "dry-run")]
+    pub dry_run: bool,
 }
 
 /// Arguments for export command.

@@ -3,10 +3,9 @@
 #[cfg(test)]
 mod tests {
     use crate::agent_cmd::cli::{CopyArgs, ExportArgs};
-    use crate::agent_cmd::loader::{
-        load_builtin_agents, parse_frontmatter, read_file_with_encoding,
-    };
+    use crate::agent_cmd::loader::{load_builtin_agents, parse_frontmatter};
     use crate::agent_cmd::types::AgentMode;
+    use crate::utils::file::read_file_with_encoding;
 
     #[test]
     fn test_read_file_with_utf8() {
@@ -89,9 +88,23 @@ mod tests {
             source: "build".to_string(),
             destination: "my-build".to_string(),
             force: false,
+            dry_run: false,
         };
         assert_eq!(args.source, "build");
         assert_eq!(args.destination, "my-build");
+        assert!(!args.dry_run);
+    }
+
+    #[test]
+    fn test_copy_args_dry_run() {
+        let args = CopyArgs {
+            source: "build".to_string(),
+            destination: "my-build".to_string(),
+            force: false,
+            dry_run: true,
+        };
+
+        assert!(args.dry_run);
     }
 
     #[test]
