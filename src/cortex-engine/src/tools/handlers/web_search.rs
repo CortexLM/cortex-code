@@ -110,10 +110,12 @@ impl ToolHandler for WebSearchHandler {
             ));
         }
 
+        let query = build_search_query(&args);
+
         // Build DuckDuckGo Instant Answer API URL with optional parameters
         let mut url = format!(
             "https://api.duckduckgo.com/?q={}&format=json&no_redirect=1&no_html=1&skip_disambig=1",
-            urlencoding::encode(&args.query)
+            urlencoding::encode(&query)
         );
 
         // Add include_text parameter if requested
@@ -185,7 +187,7 @@ impl ToolHandler for WebSearchHandler {
             Ok(ToolResult::success(format!(
                 "No immediate results found for '{}'. You may want to try a more specific query or search directly at https://duckduckgo.com/?q={}",
                 args.query,
-                urlencoding::encode(&args.query)
+                urlencoding::encode(&query)
             )))
         } else {
             Ok(ToolResult::success(format!(
@@ -194,6 +196,33 @@ impl ToolHandler for WebSearchHandler {
                 results.join("\n\n")
             )))
         }
+    }
+}
+
+fn build_search_query(args: &WebQueryArgs) -> String {
+    let mut query = args.query.clone();
+
+    if let Some(domains) = &args.include_domains {
+        append_domain_filters(&mut query, "site:", domains);
+    }
+
+    if let Some(domains) = &args.exclude_domains {
+        append_domain_filters(&mut query, "-site:", domains);
+    }
+
+    query
+}
+
+fn append_domain_filters(query: &mut String, prefix: &str, domains: &[String]) {
+    for domain in domains {
+        let domain = domain.trim();
+        if domain.is_empty() {
+            continue;
+        }
+
+        query.push(' ');
+        query.push_str(prefix);
+        query.push_str(domain);
     }
 }
 
@@ -258,5 +287,60 @@ mod tests {
         assert!(result.is_ok());
         let tool_result = result.unwrap();
         assert!(!tool_result.success);
+    }
+
+    #[test]
+    fn test_build_search_query_with_include_domains() {
+        let args = WebQueryArgs {
+            query: "rust async".to_string(),
+            search_type: default_search_type(),
+            category: None,
+            num_results: default_num_results(),
+            include_domains: Some(vec!["docs.rs".to_string(), "rust-lang.org".to_string()]),
+            exclude_domains: None,
+            include_text: false,
+        };
+
+        assert_eq!(
+            build_search_query(&args),
+            "rust async site:docs.rs site:rust-lang.org"
+        );
+    }
+
+    #[test]
+    fn test_build_search_query_with_exclude_domains() {
+        let args = WebQueryArgs {
+            query: "rust async".to_string(),
+            search_type: default_search_type(),
+            category: None,
+            num_results: default_num_results(),
+            include_domains: None,
+            exclude_domains: Some(vec!["example.com".to_string(), "spam.test".to_string()]),
+            include_text: false,
+        };
+
+        assert_eq!(
+            build_search_query(&args),
+            "rust async -site:example.com -site:spam.test"
+        );
+    }
+
+    #[test]
+    fn test_build_search_query_ignores_blank_domains() {
+        let args = WebQueryArgs {
+            query: "rust async".to_string(),
+            search_type: default_search_type(),
+            category: None,
+            num_results: default_num_results(),
+            include_domains: Some(vec![
+                " docs.rs ".to_string(),
+                "".to_string(),
+                "   ".to_string(),
+            ]),
+            exclude_domains: None,
+            include_text: false,
+        };
+
+        assert_eq!(build_search_query(&args), "rust async site:docs.rs");
     }
 }
