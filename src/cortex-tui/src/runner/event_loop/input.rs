@@ -367,6 +367,8 @@ impl EventLoop {
 
     /// Handle ESC key with double-tap to quit
     fn handle_esc(&mut self, terminal: &mut CortexTerminal) -> Result<()> {
+        self.app_state.reset_ctrl_c();
+
         // Priority 1: If viewing a subagent conversation, return to main conversation
         if self.app_state.is_viewing_subagent() {
             self.app_state.return_to_main_conversation();
