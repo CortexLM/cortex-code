@@ -29,6 +29,7 @@ pub struct CompactCli {
 #[derive(Debug, clap::Subcommand)]
 pub enum CompactSubcommand {
     /// Run a compaction cycle (logs + sessions)
+    #[command(visible_alias = "exec")]
     Run(CompactRunArgs),
 
     /// Prune old log files
@@ -732,12 +733,24 @@ use cortex_compact::AutoCompactionConfig;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
     use std::fs;
     use tempfile::tempdir;
 
     // ========================================================================
     // format_size tests
     // ========================================================================
+
+    #[test]
+    fn test_compact_run_exec_alias() {
+        let cli = CompactCli::try_parse_from(["compact", "exec", "--dry-run"])
+            .expect("compact exec should parse as run alias");
+
+        match cli.subcommand {
+            Some(CompactSubcommand::Run(args)) => assert!(args.dry_run),
+            other => panic!("expected run subcommand, got {other:?}"),
+        }
+    }
 
     #[test]
     fn test_format_size_bytes() {
