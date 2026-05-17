@@ -1,19 +1,38 @@
 //! Handler for the `agent show` command.
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 use crate::agent_cmd::cli::ShowArgs;
 use crate::agent_cmd::loader::load_all_agents;
 use crate::agent_cmd::utils::format_color_preview;
 
+fn agent_not_found_message(name: &str) -> String {
+    format!("Agent '{}' not found", name)
+}
+
+fn agent_not_found_json(name: &str) -> serde_json::Value {
+    serde_json::json!({
+        "error": agent_not_found_message(name)
+    })
+}
+
 /// Show agent details command.
 pub async fn run_show(args: ShowArgs) -> Result<()> {
     let agents = load_all_agents()?;
 
-    let agent = agents
-        .iter()
-        .find(|a| a.name == args.name)
-        .ok_or_else(|| anyhow::anyhow!("Agent '{}' not found", args.name))?;
+    let agent = match agents.iter().find(|a| a.name == args.name) {
+        Some(agent) => agent,
+        None => {
+            let error_message = agent_not_found_message(&args.name);
+            if args.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&agent_not_found_json(&args.name))?
+                );
+            }
+            bail!("{}", error_message);
+        }
+    };
 
     // Warn if the agent is hidden
     if agent.hidden {
@@ -152,4 +171,17 @@ pub async fn run_show(args: ShowArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_not_found_json_error() {
+        let error = agent_not_found_json("nonexistent");
+
+        assert_eq!(error["error"], "Agent 'nonexistent' not found");
+        serde_json::to_string(&error).expect("error should serialize as JSON");
+    }
 }
