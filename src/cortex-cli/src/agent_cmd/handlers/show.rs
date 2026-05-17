@@ -136,11 +136,11 @@ pub async fn run_show(args: ShowArgs) -> Result<()> {
     if let Some(ref prompt) = agent.prompt {
         println!("\nSystem Prompt:");
         println!("{}", "-".repeat(40));
-        let preview = if prompt.len() > 500 {
+        let preview = if prompt.chars().count() > 500 {
             format!(
                 "{}...\n\n(truncated, {} chars total)",
-                &prompt[..500],
-                prompt.len()
+                prompt.chars().take(500).collect::<String>(),
+                prompt.chars().count()
             )
         } else {
             prompt.clone()
