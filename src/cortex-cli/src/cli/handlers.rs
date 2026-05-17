@@ -58,7 +58,7 @@ pub async fn dispatch_command(cli: Cli) -> Result<()> {
         Some(Commands::Debug(debug_cli)) => debug_cli.run().await,
         Some(Commands::Servers(servers_cli)) => run_servers(servers_cli).await,
         Some(Commands::History(history_cli)) => run_history(history_cli).await,
-        Some(Commands::Plugin(plugin_cli)) => plugin_cli.run().await,
+        Some(Commands::Plugin(plugin_cli)) => plugin_cli.run(cli.verbose).await,
         Some(Commands::Feedback(feedback_cli)) => feedback_cli.run().await,
         Some(Commands::Lock(lock_cli)) => lock_cli.run().await,
         Some(Commands::Alias(alias_cli)) => alias_cli.run().await,

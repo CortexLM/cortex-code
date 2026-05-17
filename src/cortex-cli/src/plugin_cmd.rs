@@ -939,12 +939,12 @@ cp plugin.toml ~/.cortex/plugins/{}/
 
 impl PluginCli {
     /// Run the plugin command.
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, verbose: bool) -> Result<()> {
         match self.subcommand {
             PluginSubcommand::List(args) => run_list(args).await,
             PluginSubcommand::Install(args) => run_install(args).await,
             PluginSubcommand::Remove(args) => run_remove(args).await,
-            PluginSubcommand::Enable(args) => run_enable(args).await,
+            PluginSubcommand::Enable(args) => run_enable(args, verbose).await,
             PluginSubcommand::Disable(args) => run_disable(args).await,
             PluginSubcommand::Show(args) => run_show(args).await,
             PluginSubcommand::New(args) => run_new(args).await,
@@ -1169,7 +1169,30 @@ async fn run_remove(args: PluginRemoveArgs) -> Result<()> {
     Ok(())
 }
 
-async fn run_enable(args: PluginEnableArgs) -> Result<()> {
+fn plugin_enabled_value(manifest: &toml::Value) -> Option<bool> {
+    manifest.get("enabled").and_then(|value| value.as_bool())
+}
+
+fn format_enable_verbose_output(
+    plugin_path: &Path,
+    manifest_path: &Path,
+    previous_enabled: Option<bool>,
+    current_enabled: bool,
+) -> String {
+    let previous = previous_enabled
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "not set".to_string());
+
+    format!(
+        "  Plugin directory: {}\n  Manifest path: {}\n  Previous enabled: {}\n  Current enabled: {}",
+        plugin_path.display(),
+        manifest_path.display(),
+        previous,
+        current_enabled
+    )
+}
+
+async fn run_enable(args: PluginEnableArgs, verbose: bool) -> Result<()> {
     let plugins_dir = get_plugins_dir();
     let plugin_path = plugins_dir.join(&args.name);
     let manifest_path = plugin_path.join("plugin.toml");
@@ -1180,6 +1203,7 @@ async fn run_enable(args: PluginEnableArgs) -> Result<()> {
 
     let content = std::fs::read_to_string(&manifest_path)?;
     let mut manifest: toml::Value = toml::from_str(&content)?;
+    let previous_enabled = plugin_enabled_value(&manifest);
 
     if let Some(table) = manifest.as_table_mut() {
         table.insert("enabled".to_string(), toml::Value::Boolean(true));
@@ -1187,6 +1211,12 @@ async fn run_enable(args: PluginEnableArgs) -> Result<()> {
 
     std::fs::write(&manifest_path, toml::to_string_pretty(&manifest)?)?;
     println!("Plugin '{}' enabled.", args.name);
+    if verbose {
+        println!(
+            "{}",
+            format_enable_verbose_output(&plugin_path, &manifest_path, previous_enabled, true)
+        );
+    }
     Ok(())
 }
 
@@ -2469,6 +2499,26 @@ mod tests {
         };
 
         assert_eq!(args.name, "enable-me", "name should match");
+    }
+
+    #[test]
+    fn test_plugin_enable_verbose_output_adds_diagnostics() {
+        let plugin_path = PathBuf::from("/home/user/.cortex/plugins/sample-one");
+        let manifest_path = plugin_path.join("plugin.toml");
+
+        let default_output = "Plugin 'sample-one' enabled.".to_string();
+        let verbose_details =
+            format_enable_verbose_output(&plugin_path, &manifest_path, Some(false), true);
+        let verbose_output = format!("{default_output}\n{verbose_details}");
+
+        assert_ne!(
+            default_output, verbose_output,
+            "verbose enable output should differ from default output"
+        );
+        assert!(verbose_output.contains("Plugin directory:"));
+        assert!(verbose_output.contains("Manifest path:"));
+        assert!(verbose_output.contains("Previous enabled: false"));
+        assert!(verbose_output.contains("Current enabled: true"));
     }
 
     #[test]

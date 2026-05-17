@@ -989,6 +989,15 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_global_verbose_with_plugin_enable() {
+        let cli = Cli::try_parse_from(["cortex", "--verbose", "plugin", "enable", "sample-one"])
+            .expect("should parse global --verbose with plugin enable");
+
+        assert!(cli.verbose);
+        assert!(matches!(cli.command, Some(Commands::Plugin(_))));
+    }
+
+    #[test]
     fn test_cli_verbose_short_flag() {
         let cli = Cli::try_parse_from(["cortex", "-v"]).expect("should parse -v");
         assert!(cli.verbose);
