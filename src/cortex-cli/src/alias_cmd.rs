@@ -172,7 +172,7 @@ async fn run_set(args: AliasSetArgs) -> Result<()> {
 
     println!("Alias '{}' set to: {}", args.name, args.command);
     if let Some(desc) = &args.description {
-        println!("  Description: {}", desc);
+        print_multiline_description("  Description: ", "               ", desc);
     }
 
     Ok(())
@@ -203,7 +203,7 @@ async fn run_list(args: AliasListArgs) -> Result<()> {
     for alias in aliases {
         println!("  {} = {}", alias.name, alias.command);
         if let Some(desc) = &alias.description {
-            println!("      {}", desc);
+            print_multiline_description("      ", "      ", desc);
         }
     }
 
@@ -265,10 +265,40 @@ async fn run_show(args: AliasShowArgs) -> Result<()> {
     println!("{}", "-".repeat(40));
     println!("  Command: {}", alias.command);
     if let Some(desc) = &alias.description {
-        println!("  Description: {}", desc);
+        print_multiline_description("  Description: ", "               ", desc);
     }
 
     Ok(())
+}
+
+fn format_multiline_description(
+    first_prefix: &str,
+    continuation_prefix: &str,
+    desc: &str,
+) -> String {
+    let mut output = String::new();
+
+    for (index, line) in desc.lines().enumerate() {
+        if index > 0 {
+            output.push('\n');
+        }
+
+        if index == 0 {
+            output.push_str(first_prefix);
+        } else {
+            output.push_str(continuation_prefix);
+        }
+        output.push_str(line);
+    }
+
+    output
+}
+
+fn print_multiline_description(first_prefix: &str, continuation_prefix: &str, desc: &str) {
+    println!(
+        "{}",
+        format_multiline_description(first_prefix, continuation_prefix, desc)
+    );
 }
 
 #[cfg(test)]
@@ -297,6 +327,25 @@ mod tests {
             parsed.description,
             Some("Quick exec with schema output".to_string())
         );
+    }
+
+    #[test]
+    fn test_format_multiline_description_indents_every_line() {
+        let formatted =
+            format_multiline_description("      ", "      ", "First line\nSecond line\nThird line");
+
+        assert_eq!(
+            formatted,
+            "      First line\n      Second line\n      Third line"
+        );
+    }
+
+    #[test]
+    fn test_format_multiline_description_uses_continuation_prefix() {
+        let formatted =
+            format_multiline_description("  Description: ", "               ", "First\nSecond");
+
+        assert_eq!(formatted, "  Description: First\n               Second");
     }
 
     #[test]
