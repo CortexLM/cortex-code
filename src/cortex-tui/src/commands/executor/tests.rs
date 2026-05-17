@@ -316,6 +316,14 @@ fn test_mcp_subcommands() {
         CommandResult::OpenModal(ModalType::McpManager)
     ));
 
+    for command in &["/mcp-list", "/mcp-ls", "/mcp-remove", "/mcp-rm"] {
+        let result = executor.execute_str(command);
+        assert!(matches!(
+            result,
+            CommandResult::OpenModal(ModalType::McpManager)
+        ));
+    }
+
     // All mcp subcommands now redirect to the interactive panel
     let result = executor.execute_str("/mcp status");
     assert!(matches!(
