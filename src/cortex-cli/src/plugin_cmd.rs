@@ -21,6 +21,8 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
+const EMPTY_PLUGIN_NAME_ERROR: &str = "Plugin name cannot be empty";
+
 // =============================================================================
 // Plugin SDK Templates (embedded for standalone CLI operation)
 // =============================================================================
@@ -1063,10 +1065,7 @@ async fn run_list(args: PluginListArgs) -> Result<()> {
 }
 
 async fn run_install(args: PluginInstallArgs) -> Result<()> {
-    // Validate plugin name is not empty (Issue #3700)
-    if args.name.trim().is_empty() {
-        bail!("Plugin name cannot be empty. Please provide a valid plugin name.");
-    }
+    validate_plugin_name_not_empty(&args.name)?;
 
     let plugins_dir = get_plugins_dir();
 
@@ -1264,14 +1263,11 @@ async fn run_show(args: PluginShowArgs) -> Result<()> {
 // =============================================================================
 
 async fn run_new(args: PluginNewArgs) -> Result<()> {
+    validate_plugin_name_not_empty(&args.name)?;
+
     let output_dir = args
         .output
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-
-    // Validate plugin name
-    if args.name.is_empty() {
-        bail!("Plugin name cannot be empty");
-    }
 
     if !args
         .name
@@ -1372,6 +1368,14 @@ async fn run_new(args: PluginNewArgs) -> Result<()> {
     }
     println!("  cortex plugin validate");
     println!("  cortex plugin dev --watch");
+
+    Ok(())
+}
+
+fn validate_plugin_name_not_empty(name: &str) -> Result<()> {
+    if name.trim().is_empty() {
+        bail!("{}", EMPTY_PLUGIN_NAME_ERROR);
+    }
 
     Ok(())
 }
@@ -2430,6 +2434,31 @@ mod tests {
             "version should match"
         );
         assert!(args.force, "force should be true");
+    }
+
+    #[tokio::test]
+    async fn test_plugin_install_and_new_empty_name_errors_match() {
+        let install_error = run_install(PluginInstallArgs {
+            name: String::new(),
+            version: None,
+            force: false,
+        })
+        .await
+        .expect_err("empty install plugin name should fail");
+
+        let new_error = run_new(PluginNewArgs {
+            name: "   ".to_string(),
+            description: "A test plugin".to_string(),
+            author: None,
+            output: None,
+            advanced: false,
+            typescript: false,
+        })
+        .await
+        .expect_err("empty new plugin name should fail");
+
+        assert_eq!(install_error.to_string(), EMPTY_PLUGIN_NAME_ERROR);
+        assert_eq!(new_error.to_string(), EMPTY_PLUGIN_NAME_ERROR);
     }
 
     // ==========================================================================
