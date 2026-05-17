@@ -168,22 +168,24 @@ fn format_size(bytes: u64) -> String {
 
 impl CacheCli {
     /// Run the cache command.
-    pub async fn run(self) -> Result<()> {
+    pub async fn run(self, verbose: bool) -> Result<()> {
         match self.subcommand {
             None => run_show(CacheShowArgs { json: false }).await,
             Some(CacheSubcommand::Show(args)) => run_show(args).await,
             Some(CacheSubcommand::Clear(args)) => run_clear(args).await,
-            Some(CacheSubcommand::Size(args)) => run_size(args).await,
+            Some(CacheSubcommand::Size(args)) => run_size(args, verbose).await,
             Some(CacheSubcommand::List(args)) => run_list(args).await,
         }
     }
 }
 
-async fn run_show(args: CacheShowArgs) -> Result<()> {
-    let cache_dir = get_cache_dir();
+fn collect_cache_stats() -> CacheStats {
+    collect_cache_stats_for_dir(get_cache_dir())
+}
+
+fn collect_cache_stats_for_dir(cache_dir: PathBuf) -> CacheStats {
     let exists = cache_dir.exists();
 
-    // Define cache categories
     let category_names = [
         ("models", "models"),
         ("responses", "responses"),
@@ -213,14 +215,18 @@ async fn run_show(args: CacheShowArgs) -> Result<()> {
         });
     }
 
-    let stats = CacheStats {
-        cache_dir: cache_dir.clone(),
+    CacheStats {
+        cache_dir,
         exists,
         total_size_bytes: total_size,
         total_size_human: format_size(total_size),
         item_count: total_items,
         categories,
-    };
+    }
+}
+
+async fn run_show(args: CacheShowArgs) -> Result<()> {
+    let stats = collect_cache_stats();
 
     if args.json {
         println!("{}", serde_json::to_string_pretty(&stats)?);
@@ -234,7 +240,7 @@ async fn run_show(args: CacheShowArgs) -> Result<()> {
     println!("  Total Size: {}", stats.total_size_human);
     println!("  Total Items: {}", stats.item_count);
 
-    if exists && !stats.categories.is_empty() {
+    if stats.exists && !stats.categories.is_empty() {
         println!();
         println!("Categories:");
         println!("{}", "-".repeat(40));
@@ -341,24 +347,47 @@ async fn run_clear(args: CacheClearArgs) -> Result<()> {
     Ok(())
 }
 
-async fn run_size(args: CacheSizeArgs) -> Result<()> {
-    let cache_dir = get_cache_dir();
+fn format_size_text(stats: &CacheStats, verbose: bool) -> String {
+    let mut lines = vec![stats.total_size_human.clone()];
 
-    let size = if cache_dir.exists() {
-        dir_size(&cache_dir)
-    } else {
-        0
-    };
+    if verbose {
+        lines.push(format!("Cache directory: {}", stats.cache_dir.display()));
+        lines.push(format!(
+            "Exists: {}",
+            if stats.exists { "yes" } else { "no" }
+        ));
+        lines.push(format!("Total items: {}", stats.item_count));
+        lines.push("Categories:".to_string());
+        for cat in &stats.categories {
+            lines.push(format!(
+                "  {:<12} {:>10}  ({} items)  {}",
+                cat.name,
+                cat.size_human,
+                cat.item_count,
+                cat.path.display()
+            ));
+        }
+    }
+
+    lines.join("\n")
+}
+
+async fn run_size(args: CacheSizeArgs, verbose: bool) -> Result<()> {
+    let stats = collect_cache_stats();
 
     if args.json {
-        let output = serde_json::json!({
-            "size_bytes": size,
-            "size_human": format_size(size),
-            "cache_dir": cache_dir.display().to_string(),
-        });
-        println!("{}", serde_json::to_string_pretty(&output)?);
+        if verbose {
+            println!("{}", serde_json::to_string_pretty(&stats)?);
+        } else {
+            let output = serde_json::json!({
+                "size_bytes": stats.total_size_bytes,
+                "size_human": stats.total_size_human,
+                "cache_dir": stats.cache_dir.display().to_string(),
+            });
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        }
     } else {
-        println!("{}", format_size(size));
+        println!("{}", format_size_text(&stats, verbose));
     }
 
     Ok(())
@@ -648,5 +677,41 @@ mod tests {
         let size = dir_size(&temp.path().to_path_buf());
         // Empty directories should contribute 0 to size
         assert_eq!(size, 0);
+    }
+
+    #[test]
+    fn test_cache_size_verbose_text_adds_details() {
+        let temp = tempdir().expect("Failed to create temp directory");
+        let models_dir = temp.path().join("models");
+        fs::create_dir(&models_dir).expect("Failed to create models directory");
+        fs::write(models_dir.join("model.bin"), "cached model").expect("Failed to write model");
+
+        let stats = collect_cache_stats_for_dir(temp.path().to_path_buf());
+        let default_output = format_size_text(&stats, false);
+        let verbose_output = format_size_text(&stats, true);
+
+        assert_eq!(default_output, stats.total_size_human);
+        assert_ne!(default_output, verbose_output);
+        assert!(verbose_output.contains("Cache directory:"));
+        assert!(verbose_output.contains("Total items: 1"));
+        assert!(verbose_output.contains("models"));
+    }
+
+    #[test]
+    fn test_cache_size_verbose_json_includes_categories() {
+        let temp = tempdir().expect("Failed to create temp directory");
+        let logs_dir = temp.path().join("logs");
+        fs::create_dir(&logs_dir).expect("Failed to create logs directory");
+        fs::write(logs_dir.join("cortex.log"), "log").expect("Failed to write log");
+
+        let stats = collect_cache_stats_for_dir(temp.path().to_path_buf());
+        let json = serde_json::to_value(&stats).expect("stats should serialize");
+
+        assert_eq!(json["total_size_bytes"].as_u64(), Some(3));
+        assert_eq!(json["item_count"].as_u64(), Some(1));
+        assert!(json["categories"].as_array().is_some_and(|cats| {
+            cats.iter()
+                .any(|cat| cat["name"] == "logs" && cat["item_count"] == 1)
+        }));
     }
 }
