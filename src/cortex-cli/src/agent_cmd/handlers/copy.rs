@@ -31,7 +31,7 @@ pub async fn run_copy(args: CopyArgs) -> Result<()> {
 
     // Check if destination already exists
     let dest_exists = agents.iter().any(|a| a.name == args.destination);
-    if dest_exists && !args.force {
+    if dest_exists && !args.force && !args.dry_run {
         bail!(
             "Agent '{}' already exists. Use --force to overwrite.",
             args.destination
@@ -40,9 +40,40 @@ pub async fn run_copy(args: CopyArgs) -> Result<()> {
 
     // Get the agents directory
     let agents_dir = get_agents_dir()?;
-    std::fs::create_dir_all(&agents_dir)?;
-
     let dest_file = agents_dir.join(format!("{}.md", args.destination));
+
+    if args.dry_run {
+        println!(
+            "Would copy agent '{}' to '{}'",
+            args.source, args.destination
+        );
+        println!(
+            "   Source: {}",
+            source_agent
+                .path
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|| "builtin".to_string())
+        );
+        println!("   Destination: {}", dest_file.display());
+        println!(
+            "   Destination exists: {}",
+            if dest_exists { "yes" } else { "no" }
+        );
+        println!(
+            "   Force required: {}",
+            if dest_exists && !args.force {
+                "yes"
+            } else {
+                "no"
+            }
+        );
+        println!();
+        println!("No files written (dry run).");
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(&agents_dir)?;
 
     // Generate the agent content
     let content = if source_agent.native {
