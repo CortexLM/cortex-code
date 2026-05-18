@@ -10,7 +10,7 @@ use axum::{
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-use super::path_security::{validate_path_for_delete, validate_path_for_write};
+use super::path_security::{validate_path_for_delete, validate_path_for_write, validate_path_safe};
 use super::types::{
     CreateDirRequest, DeleteFileRequest, DeleteFileResponse, FileEntry, FileTreeNode,
     FileTreeQuery, ListFilesRequest, ListFilesResponse, ReadFileRequest, ReadFileResponse,
@@ -194,19 +194,20 @@ pub async fn read_file(Json(req): Json<ReadFileRequest>) -> AppResult<Json<ReadF
     use std::fs;
 
     let path = std::path::Path::new(&req.path);
+    let validated_path = validate_path_safe(path).map_err(AppError::BadRequest)?;
 
-    if !path.exists() {
+    if !validated_path.exists() {
         return Err(AppError::NotFound(format!("File not found: {}", req.path)));
     }
 
-    if !path.is_file() {
+    if !validated_path.is_file() {
         return Err(AppError::BadRequest("Path is not a file".to_string()));
     }
 
-    let content = fs::read_to_string(path)
+    let content = fs::read_to_string(&validated_path)
         .map_err(|e| AppError::Internal(format!("Failed to read file: {e}")))?;
 
-    let size = path.metadata().map(|m| m.len()).unwrap_or(0);
+    let size = validated_path.metadata().map(|m| m.len()).unwrap_or(0);
 
     Ok(Json(ReadFileResponse {
         path: req.path,
@@ -343,4 +344,56 @@ pub async fn watch_files(
     };
 
     axum::response::Sse::new(stream).keep_alive(KeepAlive::default())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use axum::Json;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_read_file_reads_valid_allowed_path() {
+        let dir = unique_temp_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let file_path = dir.join("allowed.txt");
+        std::fs::write(&file_path, "allowed content").unwrap();
+
+        let response = read_file(Json(ReadFileRequest {
+            path: file_path.to_string_lossy().to_string(),
+        }))
+        .await
+        .unwrap()
+        .0;
+
+        assert_eq!(response.content, "allowed content");
+        assert_eq!(response.size, "allowed content".len() as u64);
+
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_read_file_rejects_system_path_outside_allowed_roots() {
+        let result = read_file(Json(ReadFileRequest {
+            path: "/etc/passwd".to_string(),
+        }))
+        .await;
+        let err = result.err().expect("system path should be rejected");
+
+        assert!(matches!(err, AppError::BadRequest(_)));
+        assert!(
+            err.to_string().contains("outside allowed directories"),
+            "unexpected error: {err}"
+        );
+    }
+
+    fn unique_temp_dir() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "cortex-app-server-read-file-test-{}",
+            uuid::Uuid::new_v4()
+        ))
+    }
 }
