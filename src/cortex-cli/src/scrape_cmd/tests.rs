@@ -42,6 +42,28 @@ mod tests {
     }
 
     #[test]
+    fn test_html_to_markdown_ordered_lists() {
+        let html = r#"
+            <ol>
+                <li>Install Rust</li>
+                <li>Run cortex</li>
+                <li>Check output<ul><li>Keep nested unordered item</li></ul></li>
+            </ol>
+            <ol start="4">
+                <li>Continue numbering</li>
+            </ol>
+        "#;
+        let md = html_to_markdown(html, false, false);
+
+        assert!(md.contains("1. Install Rust"), "got: {md}");
+        assert!(md.contains("2. Run cortex"), "got: {md}");
+        assert!(md.contains("3. Check output"), "got: {md}");
+        assert!(md.contains("  - Keep nested unordered item"), "got: {md}");
+        assert!(md.contains("4. Continue numbering"), "got: {md}");
+        assert!(!md.contains("- Install Rust"), "got: {md}");
+    }
+
+    #[test]
     fn test_html_to_text() {
         let html = "<h1>Title</h1><p>Hello <strong>world</strong>!</p>";
         let text = html_to_text(html);
