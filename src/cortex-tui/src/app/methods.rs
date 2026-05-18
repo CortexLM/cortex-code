@@ -87,6 +87,7 @@ impl AppState {
     pub fn new_session(&mut self) {
         self.session_id = Some(Uuid::new_v4());
         self.clear_messages();
+        self.input.clear();
         self.set_view(AppView::Session);
     }
 

@@ -166,12 +166,14 @@ async fn test_handle_submit_empty() {
 async fn test_handle_new_session() {
     let mut state = create_test_state();
     let mut stream = create_test_stream();
+    state.input.set_text("hello from old session");
 
     let result = run_action(&mut state, &mut stream, KeyAction::NewSession).await;
     assert!(result.is_ok());
     assert!(result.unwrap());
     assert!(state.session_id.is_some());
     assert_eq!(state.view, AppView::Session);
+    assert!(state.input.text().is_empty());
 }
 
 #[tokio::test]
