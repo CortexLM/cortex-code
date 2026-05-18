@@ -161,7 +161,7 @@ pub struct RunCli {
     /// Maximum tokens for response (used for token validation).
     /// If specified, cortex will validate that prompt + max_tokens
     /// does not exceed the model's context limit before making the API call.
-    #[arg(long = "max-tokens")]
+    #[arg(long = "max-tokens", value_parser = clap::value_parser!(u32).range(1..))]
     pub max_tokens: Option<u32>,
 
     /// Custom system prompt to use instead of the default.
