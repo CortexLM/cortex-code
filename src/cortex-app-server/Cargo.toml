@@ -25,6 +25,7 @@ cortex-common = { path = "../cortex-common" }
 # Web framework
 axum = { workspace = true }
 tower-http = { workspace = true }
+http-body-util = { workspace = true }
 
 # Async
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync", "fs", "net", "process", "time"] }
@@ -73,3 +74,4 @@ gethostname = "0.5"
 
 [dev-dependencies]
 tokio-test = { workspace = true }
+tower = { version = "0.5", features = ["util"] }
