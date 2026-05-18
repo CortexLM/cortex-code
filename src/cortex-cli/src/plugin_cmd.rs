@@ -1363,7 +1363,7 @@ async fn run_new(args: PluginNewArgs) -> Result<()> {
 
     println!("\nPlugin created successfully!");
     println!("\nNext steps:");
-    println!("  cd {}", args.name);
+    println!("  cd {}", plugin_new_cd_target(&plugin_dir));
     if args.typescript {
         println!("  npm install");
         println!("  npm run build");
@@ -1374,6 +1374,10 @@ async fn run_new(args: PluginNewArgs) -> Result<()> {
     println!("  cortex plugin dev --watch");
 
     Ok(())
+}
+
+fn plugin_new_cd_target(plugin_dir: &Path) -> String {
+    plugin_dir.display().to_string()
 }
 
 // =============================================================================
@@ -2963,6 +2967,17 @@ mod tests {
             args.output,
             Some(PathBuf::from("./plugins")),
             "output should match"
+        );
+    }
+
+    #[test]
+    fn test_plugin_new_cd_target_uses_created_directory() {
+        let plugin_dir = PathBuf::from("custom-output").join("output-plugin");
+
+        assert_eq!(
+            plugin_new_cd_target(&plugin_dir),
+            plugin_dir.display().to_string(),
+            "cd target should match the created plugin directory"
         );
     }
 
