@@ -21,6 +21,8 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
+const PLUGIN_LIST_FILTER_CONFLICT: &str = "Cannot specify both --enabled and --disabled. Choose one filter or use neither for all plugins.";
+
 // =============================================================================
 // Plugin SDK Templates (embedded for standalone CLI operation)
 // =============================================================================
@@ -959,9 +961,14 @@ impl PluginCli {
 async fn run_list(args: PluginListArgs) -> Result<()> {
     // Validate mutually exclusive flags
     if args.enabled && args.disabled {
-        bail!(
-            "Cannot specify both --enabled and --disabled. Choose one filter or use neither for all plugins."
-        );
+        if args.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&plugin_list_filter_conflict_error())?
+            );
+            std::process::exit(1);
+        }
+        bail!(PLUGIN_LIST_FILTER_CONFLICT);
     }
 
     let plugins_dir = get_plugins_dir();
@@ -1060,6 +1067,12 @@ async fn run_list(args: PluginListArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn plugin_list_filter_conflict_error() -> serde_json::Value {
+    serde_json::json!({
+        "error": PLUGIN_LIST_FILTER_CONFLICT
+    })
 }
 
 async fn run_install(args: PluginInstallArgs) -> Result<()> {
@@ -2368,6 +2381,18 @@ mod tests {
 
         assert!(!args.enabled, "enabled filter should be false");
         assert!(args.disabled, "disabled filter should be true when set");
+    }
+
+    #[test]
+    fn test_plugin_list_filter_conflict_error_serializes_as_json() {
+        let error = plugin_list_filter_conflict_error();
+        let json = serde_json::to_string(&error).expect("should serialize conflict error");
+
+        assert!(json.contains("error"), "JSON should contain error field");
+        assert!(
+            json.contains(PLUGIN_LIST_FILTER_CONFLICT),
+            "JSON should contain conflict message"
+        );
     }
 
     // ==========================================================================
