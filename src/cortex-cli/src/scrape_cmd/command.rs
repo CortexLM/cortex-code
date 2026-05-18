@@ -2,6 +2,7 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
@@ -137,6 +138,7 @@ impl ScrapeCommand {
                 protocol
             );
         }
+        let initial_url = reqwest::Url::parse(&self.url).context("Invalid URL")?;
 
         // Parse output format
         let format: OutputFormat = self.format.parse()?;
@@ -149,9 +151,10 @@ impl ScrapeCommand {
         } else {
             reqwest::redirect::Policy::limited(10)
         };
+        let cookie_jar = build_cookie_jar(&self.cookies, &initial_url);
         let mut client_builder = create_client_builder()
             .redirect(redirect_policy)
-            .cookie_store(true);
+            .cookie_provider(Arc::clone(&cookie_jar));
 
         // Override timeout if specified (0 means no timeout)
         // Apply timeout to both connection phase and overall request
@@ -175,13 +178,6 @@ impl ScrapeCommand {
         // Add custom headers
         let parsed_headers = parse_headers(&self.headers)?;
 
-        // Build cookie header from --cookie flags
-        let cookie_header = if !self.cookies.is_empty() {
-            Some(self.cookies.join("; "))
-        } else {
-            None
-        };
-
         if self.verbose {
             eprintln!("Fetching: {} (method: {})", self.url, method_upper);
         }
@@ -200,11 +196,6 @@ impl ScrapeCommand {
         // Add custom headers
         for (name, value) in &parsed_headers {
             request = request.header(name.as_str(), value.as_str());
-        }
-
-        // Add cookies if specified
-        if let Some(ref cookies) = cookie_header {
-            request = request.header("Cookie", cookies.as_str());
         }
 
         let response = request.send().await.context("Failed to fetch URL")?;
@@ -371,5 +362,49 @@ impl ScrapeCommand {
         };
 
         Ok(output)
+    }
+}
+
+fn build_cookie_jar(cookies: &[String], initial_url: &reqwest::Url) -> Arc<reqwest::cookie::Jar> {
+    let jar = Arc::new(reqwest::cookie::Jar::default());
+
+    for cookie in cookies {
+        for part in cookie
+            .split(';')
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+        {
+            jar.add_cookie_str(part, initial_url);
+        }
+    }
+
+    jar
+}
+
+#[cfg(test)]
+mod tests {
+    use reqwest::cookie::CookieStore;
+    use reqwest::header::HeaderValue;
+
+    use super::*;
+
+    #[test]
+    fn test_cli_cookies_merge_with_redirect_set_cookies() {
+        let initial_url = reqwest::Url::parse("http://example.test/redirect").unwrap();
+        let final_url = reqwest::Url::parse("http://example.test/final").unwrap();
+        let jar = build_cookie_jar(&["my_token=abc".to_string()], &initial_url);
+
+        let set_cookie = [HeaderValue::from_static("server_session=xyz; Path=/")];
+        jar.set_cookies(&mut set_cookie.iter(), &initial_url);
+
+        let cookie_header = jar
+            .cookies(&final_url)
+            .expect("merged cookies should be sent to same-origin redirect target")
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        assert!(cookie_header.contains("my_token=abc"));
+        assert!(cookie_header.contains("server_session=xyz"));
     }
 }
