@@ -99,9 +99,12 @@ where
     };
 
     let listener = TcpListener::bind(addr).await?;
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await?;
 
     // Graceful shutdown: close all active sessions first
     // This ensures WebSocket clients receive proper close frames
