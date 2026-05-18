@@ -18,6 +18,14 @@ use super::helpers::{
 use super::scheduler::DagScheduler;
 use super::types::{DagOutputFormat, ExecutionStrategy};
 
+pub(super) fn task_count_label(count: usize) -> String {
+    if count == 1 {
+        "1 task".to_string()
+    } else {
+        format!("{} tasks", count)
+    }
+}
+
 /// Create a DAG from specification.
 pub async fn run_create(args: DagCreateArgs) -> Result<()> {
     let spec = load_spec(&args.file)?;
@@ -362,8 +370,8 @@ pub async fn run_validate(args: DagValidateArgs) -> Result<()> {
             match dag.topological_sort() {
                 Ok(order) => {
                     print_success(&format!(
-                        "✓ DAG is valid ({} tasks, no cycles detected)",
-                        dag.len()
+                        "✓ DAG is valid ({}, no cycles detected)",
+                        task_count_label(dag.len())
                     ));
 
                     if args.verbose {

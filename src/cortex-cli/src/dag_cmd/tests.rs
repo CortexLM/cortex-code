@@ -5,6 +5,7 @@ use super::types::{DagSpecInput, TaskSpecInput};
 use cortex_agents::task::{DagHydrator, Task, TaskId, TaskSpec};
 use std::collections::HashMap;
 
+use super::commands::task_count_label;
 use super::executor::TaskExecutor;
 
 #[test]
@@ -76,6 +77,12 @@ fn test_dag_creation_with_cycle_detection() {
 
     let result = DagHydrator::new().hydrate_from_specs(&specs);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_dag_validate_task_count_label_uses_singular_for_one_task() {
+    assert_eq!(task_count_label(1), "1 task");
+    assert_eq!(task_count_label(2), "2 tasks");
 }
 
 #[tokio::test]
