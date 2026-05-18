@@ -18,6 +18,14 @@ use super::helpers::{
 use super::scheduler::DagScheduler;
 use super::types::{DagOutputFormat, ExecutionStrategy};
 
+pub(super) fn task_count_label(count: usize) -> String {
+    if count == 1 {
+        "1 task".to_string()
+    } else {
+        format!("{} tasks", count)
+    }
+}
+
 /// Create a DAG from specification.
 pub async fn run_create(args: DagCreateArgs) -> Result<()> {
     let spec = load_spec(&args.file)?;
@@ -49,7 +57,11 @@ pub async fn run_create(args: DagCreateArgs) -> Result<()> {
 
     match args.format {
         DagOutputFormat::Text => {
-            print_success(&format!("✓ Created DAG '{}' with {} tasks", id, dag.len()));
+            print_success(&format!(
+                "✓ Created DAG '{}' with {}",
+                id,
+                task_count_label(dag.len())
+            ));
             println!();
             print_dag_summary(&dag);
         }
