@@ -311,7 +311,8 @@ fn process_node_to_markdown(
                         }
                         "li" => {
                             let indent = "  ".repeat(list_depth.saturating_sub(1));
-                            output.push_str(&format!("\n{indent}- "));
+                            let marker = list_item_marker(element_ref);
+                            output.push_str(&format!("\n{indent}{marker}"));
                             process_node_to_markdown(
                                 element_ref,
                                 output,
@@ -446,6 +447,28 @@ fn process_node_to_markdown(
             _ => {}
         }
     }
+}
+
+fn list_item_marker(element_ref: scraper::ElementRef) -> String {
+    let Some(parent) = element_ref.parent().and_then(scraper::ElementRef::wrap) else {
+        return "- ".to_string();
+    };
+
+    if parent.value().name() != "ol" {
+        return "- ".to_string();
+    }
+
+    let start = parent
+        .attr("start")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(1);
+    let previous_items = element_ref
+        .prev_siblings()
+        .filter_map(scraper::ElementRef::wrap)
+        .filter(|sibling| sibling.value().name() == "li")
+        .count();
+
+    format!("{}. ", start + previous_items)
 }
 
 /// Convert HTML to plain text.
