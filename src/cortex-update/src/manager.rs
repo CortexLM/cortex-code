@@ -101,6 +101,29 @@ impl UpdateManager {
         self.check_update_forced().await
     }
 
+    /// Check for an update that should be shown as a user notification.
+    ///
+    /// This suppresses repeat notifications for the same latest version while
+    /// leaving the regular update check behavior unchanged for explicit update
+    /// commands and install flows.
+    pub async fn check_update_for_notification(&mut self) -> UpdateResult<Option<UpdateInfo>> {
+        let info = match self.check_update().await? {
+            Some(info) => info,
+            None => return Ok(None),
+        };
+
+        if self.config.is_version_notified(&info.latest_version) {
+            return Ok(None);
+        }
+
+        self.config.mark_version_notified(&info.latest_version);
+        if let Err(e) = self.config.save() {
+            tracing::warn!("Failed to save update notification state: {}", e);
+        }
+
+        Ok(Some(info))
+    }
+
     /// Force check for updates (bypass cache).
     pub async fn check_update_forced(&self) -> UpdateResult<Option<UpdateInfo>> {
         let latest = self.client.get_latest(self.config.channel).await?;
