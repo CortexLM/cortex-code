@@ -30,6 +30,9 @@ pub enum WorkspaceSubcommand {
     /// Set workspace settings
     Set(WorkspaceSetArgs),
 
+    /// Unset (remove) workspace settings
+    Unset(WorkspaceUnsetArgs),
+
     /// Open workspace configuration in editor
     Edit(WorkspaceEditArgs),
 }
@@ -62,6 +65,13 @@ pub struct WorkspaceSetArgs {
 
     /// Value to set
     pub value: String,
+}
+
+/// Arguments for workspace unset command.
+#[derive(Debug, Parser)]
+pub struct WorkspaceUnsetArgs {
+    /// Configuration key to remove
+    pub key: String,
 }
 
 /// Arguments for workspace edit command.
@@ -104,6 +114,7 @@ impl WorkspaceCli {
             Some(WorkspaceSubcommand::Show(args)) => run_show(args).await,
             Some(WorkspaceSubcommand::Init(args)) => run_init(args).await,
             Some(WorkspaceSubcommand::Set(args)) => run_set(args).await,
+            Some(WorkspaceSubcommand::Unset(args)) => run_unset(args).await,
             Some(WorkspaceSubcommand::Edit(args)) => run_edit(args).await,
         }
     }
@@ -322,6 +333,19 @@ async fn run_init(args: WorkspaceInitArgs) -> Result<()> {
     Ok(())
 }
 
+fn workspace_config_key(key: &str) -> (&str, &str) {
+    match key {
+        "model" | "default_model" => ("model", "default"),
+        "sandbox" | "sandbox_mode" => ("sandbox", "mode"),
+        "approval" | "approval_mode" => ("approval", "mode"),
+        k if k.contains('.') => {
+            let parts: Vec<&str> = k.splitn(2, '.').collect();
+            (parts[0], parts[1])
+        }
+        _ => ("", key),
+    }
+}
+
 async fn run_set(args: WorkspaceSetArgs) -> Result<()> {
     let root = find_workspace_root();
     let cortex_dir = root.join(".cortex");
@@ -345,16 +369,7 @@ async fn run_set(args: WorkspaceSetArgs) -> Result<()> {
         .unwrap_or_else(|_| toml_edit::DocumentMut::new());
 
     // Map common keys to their TOML sections
-    let (section, actual_key) = match args.key.as_str() {
-        "model" | "default_model" => ("model", "default"),
-        "sandbox" | "sandbox_mode" => ("sandbox", "mode"),
-        "approval" | "approval_mode" => ("approval", "mode"),
-        k if k.contains('.') => {
-            let parts: Vec<&str> = k.splitn(2, '.').collect();
-            (parts[0], parts[1])
-        }
-        _ => ("", args.key.as_str()),
-    };
+    let (section, actual_key) = workspace_config_key(&args.key);
 
     if section.is_empty() {
         doc[actual_key] = toml_edit::value(&args.value);
@@ -368,6 +383,54 @@ async fn run_set(args: WorkspaceSetArgs) -> Result<()> {
     std::fs::write(&config_path, doc.to_string())?;
 
     println!("Set {} = {}", args.key, args.value);
+    println!("Config saved to: {}", config_path.display());
+
+    Ok(())
+}
+
+async fn run_unset(args: WorkspaceUnsetArgs) -> Result<()> {
+    let root = find_workspace_root();
+    let cortex_dir = root.join(".cortex");
+    let config_path = cortex_dir.join("config.toml");
+
+    if !config_path.exists() {
+        bail!(
+            "No workspace configuration file found at {}",
+            config_path.display()
+        );
+    }
+
+    let content = std::fs::read_to_string(&config_path)?;
+    let mut doc = content.parse::<toml_edit::DocumentMut>()?;
+    let (section, actual_key) = workspace_config_key(&args.key);
+
+    let removed = if section.is_empty() {
+        doc.as_table_mut().remove(actual_key).is_some()
+    } else {
+        let mut remove_empty_section = false;
+        let removed = if let Some(table) = doc.get_mut(section).and_then(|item| item.as_table_mut())
+        {
+            let removed = table.remove(actual_key).is_some();
+            remove_empty_section = removed && table.iter().next().is_none();
+            removed
+        } else {
+            false
+        };
+
+        if remove_empty_section {
+            doc.as_table_mut().remove(section);
+        }
+
+        removed
+    };
+
+    if !removed {
+        bail!("Key '{}' not found in workspace configuration", args.key);
+    }
+
+    std::fs::write(&config_path, doc.to_string())?;
+
+    println!("Removed key: {}", args.key);
     println!("Config saved to: {}", config_path.display());
 
     Ok(())
@@ -689,6 +752,27 @@ mod tests {
 
         assert_eq!(args.key, "sandbox.mode");
         assert_eq!(args.value, "full-access");
+    }
+
+    // ==========================================================================
+    // WorkspaceUnsetArgs tests
+    // ==========================================================================
+
+    #[test]
+    fn test_workspace_unset_args_simple_key() {
+        let args = WorkspaceUnsetArgs {
+            key: "model".to_string(),
+        };
+
+        assert_eq!(args.key, "model");
+    }
+
+    #[test]
+    fn test_workspace_config_key_maps_aliases() {
+        assert_eq!(workspace_config_key("model"), ("model", "default"));
+        assert_eq!(workspace_config_key("sandbox_mode"), ("sandbox", "mode"));
+        assert_eq!(workspace_config_key("approval.mode"), ("approval", "mode"));
+        assert_eq!(workspace_config_key("custom_key"), ("", "custom_key"));
     }
 
     // ==========================================================================
