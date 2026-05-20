@@ -6,7 +6,19 @@ mod tests {
         field::FormField, field_kind::FieldKind, modal::FormModal, state::FormState,
         utils::grapheme_count,
     };
-    use ratatui::prelude::Rect;
+    use ratatui::prelude::{Buffer, Rect};
+    use ratatui::widgets::Widget;
+
+    fn buffer_text(buf: &Buffer, area: Rect) -> String {
+        let mut text = String::new();
+        for y in area.y..area.y + area.height {
+            for x in area.x..area.x + area.width {
+                text.push_str(buf[(x, y)].symbol());
+            }
+            text.push('\n');
+        }
+        text
+    }
 
     #[test]
     fn test_field_builders() {
@@ -151,6 +163,34 @@ mod tests {
         assert_eq!(centered.height, 25);
         assert_eq!(centered.x, 25);
         assert_eq!(centered.y, 12);
+    }
+
+    #[test]
+    fn test_placeholder_shown_for_focused_empty_field() {
+        let fields = vec![FormField::text("query", "Query").with_placeholder("Search terms...")];
+        let state = FormState::new("Search", "search", fields);
+        let area = Rect::new(0, 0, 80, 24);
+        let mut buf = Buffer::empty(area);
+
+        FormModal::new(&state).render(area, &mut buf);
+
+        let rendered = buffer_text(&buf, area);
+        assert!(rendered.contains("Search terms..."));
+    }
+
+    #[test]
+    fn test_placeholder_hidden_when_submit_is_focused() {
+        let fields = vec![FormField::text("query", "Query").with_placeholder("Search terms...")];
+        let mut state = FormState::new("Search", "search", fields);
+        state.focus_next();
+        let area = Rect::new(0, 0, 80, 24);
+        let mut buf = Buffer::empty(area);
+
+        FormModal::new(&state).render(area, &mut buf);
+
+        let rendered = buffer_text(&buf, area);
+        assert!(!rendered.contains("Search terms..."));
+        assert!(rendered.contains("[ Submit ]"));
     }
 
     #[test]
