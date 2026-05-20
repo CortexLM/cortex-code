@@ -7,7 +7,7 @@ use cortex_login::{
     safe_format_key, save_auth_with_fallback,
 };
 use std::collections::HashSet;
-use std::io::{IsTerminal, Read};
+use std::io::{BufRead, IsTerminal, Read};
 use std::path::PathBuf;
 
 /// Check for duplicate config override keys and warn the user.
@@ -39,6 +39,14 @@ fn get_cortex_home() -> PathBuf {
             .map(|h| h.join(".cortex"))
             .unwrap_or_else(|| PathBuf::from(".cortex"))
     })
+}
+
+/// Read and parse a logout confirmation response.
+pub fn read_logout_confirmation<R: BufRead>(reader: &mut R) -> std::io::Result<bool> {
+    let mut input = String::new();
+    reader.read_line(&mut input)?;
+    let input = input.trim().to_lowercase();
+    Ok(input == "y" || input == "yes")
 }
 
 /// Run login with API key.
@@ -205,12 +213,17 @@ pub async fn run_logout(config_overrides: CliConfigOverrides, skip_confirmation:
                 );
                 let _ = std::io::Write::flush(&mut std::io::stderr());
 
-                let mut input = String::new();
-                if std::io::stdin().read_line(&mut input).is_ok() {
-                    let input = input.trim().to_lowercase();
-                    if input != "y" && input != "yes" {
+                let stdin = std::io::stdin();
+                let mut stdin = stdin.lock();
+                match read_logout_confirmation(&mut stdin) {
+                    Ok(true) => {}
+                    Ok(false) => {
                         print_info("Logout cancelled.");
                         std::process::exit(0);
+                    }
+                    Err(e) => {
+                        print_error(&format!("Failed to read logout confirmation: {e}"));
+                        std::process::exit(1);
                     }
                 }
             }
