@@ -334,6 +334,8 @@ impl<'a> InteractiveWidget<'a> {
             buf.set_string(x, area.y, checkbox, checkbox_style);
             x += 4;
         }
+        let is_checked_item =
+            self.state.multi_select && is_checked && !item.disabled && !item.is_separator;
 
         // Icon
         if let Some(icon) = item.icon {
@@ -350,6 +352,8 @@ impl<'a> InteractiveWidget<'a> {
                 .add_modifier(Modifier::BOLD)
         } else if is_selected {
             Style::default().fg(fg).add_modifier(Modifier::BOLD)
+        } else if is_checked_item {
+            Style::default().fg(SUCCESS).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(fg)
         };
