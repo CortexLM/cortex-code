@@ -8,7 +8,7 @@
 use anyhow::{Result, bail};
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Workspace CLI command.
 #[derive(Debug, Parser)]
@@ -85,7 +85,7 @@ struct WorkspaceInfo {
     settings: Option<WorkspaceSettings>,
 }
 
-/// Workspace settings from .cortex/config.toml
+/// Workspace settings from .cortex/config.toml or .cortex/config.json
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct WorkspaceSettings {
     #[serde(default)]
@@ -136,11 +136,11 @@ fn find_workspace_root() -> PathBuf {
 async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
     let root = find_workspace_root();
     let cortex_dir = root.join(".cortex");
-    let config_path = cortex_dir.join("config.toml");
+    let config_path = find_workspace_config_path(&cortex_dir);
     let agents_path = root.join("AGENTS.md");
     let git_dir = root.join(".git");
 
-    let has_cortex_config = config_path.exists();
+    let has_cortex_config = config_path.is_some();
     let has_agents_md = agents_path.exists();
     let has_git = git_dir.exists();
 
@@ -151,24 +151,14 @@ async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
         .map(|s| s.to_string());
 
     // Load settings if config exists
-    let settings = if has_cortex_config {
-        std::fs::read_to_string(&config_path)
-            .ok()
-            .and_then(|content| toml::from_str(&content).ok())
-    } else {
-        None
-    };
+    let settings = config_path.as_deref().and_then(load_workspace_settings);
 
     let info = WorkspaceInfo {
         root: root.clone(),
         has_cortex_config,
         has_agents_md,
         has_git,
-        config_path: if has_cortex_config {
-            Some(config_path)
-        } else {
-            None
-        },
+        config_path: config_path.clone(),
         agents_path: if has_agents_md {
             Some(agents_path)
         } else {
@@ -193,14 +183,12 @@ async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
 
     println!("Configuration:");
     println!("{}", "-".repeat(40));
-    println!(
-        "  .cortex/config.toml: {}",
-        if info.has_cortex_config {
-            "present"
-        } else {
-            "not found"
-        }
-    );
+    if let Some(ref path) = info.config_path {
+        let display_path = path.strip_prefix(&root).unwrap_or(path);
+        println!("  {}: present", display_path.display());
+    } else {
+        println!("  .cortex/config.toml or .cortex/config.json: not found");
+    }
     println!(
         "  AGENTS.md:           {}",
         if info.has_agents_md {
@@ -235,6 +223,24 @@ async fn run_show(args: WorkspaceShowArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn find_workspace_config_path(cortex_dir: &Path) -> Option<PathBuf> {
+    ["config.toml", "config.json"]
+        .into_iter()
+        .map(|name| cortex_dir.join(name))
+        .find(|path| path.exists())
+}
+
+fn load_workspace_settings(config_path: &Path) -> Option<WorkspaceSettings> {
+    let content = std::fs::read_to_string(config_path).ok()?;
+    match config_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+    {
+        Some("json") => serde_json::from_str(&content).ok(),
+        _ => toml::from_str(&content).ok(),
+    }
 }
 
 async fn run_init(args: WorkspaceInitArgs) -> Result<()> {
