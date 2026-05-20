@@ -35,7 +35,7 @@ pub struct LogsCli {
     pub json: bool,
 
     /// Show log file paths instead of content
-    #[arg(long)]
+    #[arg(long, conflicts_with_all = ["follow", "level", "lines"])]
     pub paths: bool,
 
     /// Clear old log files
