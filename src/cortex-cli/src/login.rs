@@ -157,7 +157,7 @@ pub async fn run_login_status(config_overrides: CliConfigOverrides) -> ! {
             AuthMode::ApiKey => {
                 if let Some(key) = auth.get_token() {
                     print_success(&format!(
-                        "Logged in using an API key: {}",
+                        "Logged in using stored API credential: {}",
                         safe_format_key(key)
                     ));
                     std::process::exit(0);
