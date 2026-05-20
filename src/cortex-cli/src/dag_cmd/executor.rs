@@ -8,6 +8,14 @@ use crate::styled_output::print_info;
 
 use super::types::TaskExecutionResult;
 
+fn shell_invocation() -> (&'static str, &'static str) {
+    if cfg!(windows) {
+        ("cmd.exe", "/C")
+    } else {
+        ("sh", "-c")
+    }
+}
+
 /// Task executor that runs the actual task commands.
 pub struct TaskExecutor {
     timeout: Duration,
@@ -76,8 +84,9 @@ impl TaskExecutor {
         let timeout_duration = self.timeout;
 
         let result = tokio::time::timeout(timeout_duration, async {
-            let output = tokio::process::Command::new("sh")
-                .arg("-c")
+            let (shell, shell_arg) = shell_invocation();
+            let output = tokio::process::Command::new(shell)
+                .arg(shell_arg)
                 .arg(cmd)
                 .output()
                 .await
