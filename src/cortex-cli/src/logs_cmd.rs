@@ -222,6 +222,27 @@ impl LogsCli {
         println!("Following log file: {}", log_file.display());
         println!("Press Ctrl+C to stop.\n");
 
+        let content = std::fs::read_to_string(log_file)?;
+        let lines: Vec<&str> = content.lines().collect();
+        let filtered_lines: Vec<&str> = if let Some(ref level) = self.level {
+            let level_upper = level.to_uppercase();
+            lines
+                .iter()
+                .filter(|line| line.to_uppercase().contains(&level_upper))
+                .copied()
+                .collect()
+        } else {
+            lines
+        };
+        let start = if filtered_lines.len() > self.lines {
+            filtered_lines.len() - self.lines
+        } else {
+            0
+        };
+        for line in &filtered_lines[start..] {
+            println!("{}", line);
+        }
+
         let file = std::fs::File::open(log_file)?;
         let mut reader = BufReader::new(file);
 
