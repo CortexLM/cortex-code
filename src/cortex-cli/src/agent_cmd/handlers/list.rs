@@ -9,6 +9,15 @@ use crate::agent_cmd::utils::matches_pattern;
 
 /// List agents command.
 pub async fn run_list(args: ListArgs) -> Result<()> {
+    tracing::debug!(
+        all = args.all,
+        primary = args.primary,
+        subagents = args.subagents,
+        remote = args.remote,
+        filter = ?args.filter,
+        "listing agents"
+    );
+
     // Validate mutually exclusive flags
     if args.primary && args.subagents {
         bail!(
@@ -31,6 +40,7 @@ pub async fn run_list(args: ListArgs) -> Result<()> {
     }
 
     let agents = load_all_agents()?;
+    tracing::debug!(total_agents = agents.len(), "loaded agent definitions");
 
     // Filter agents
     let mut filtered: Vec<_> = agents
@@ -56,6 +66,7 @@ pub async fn run_list(args: ListArgs) -> Result<()> {
             true
         })
         .collect();
+    tracing::debug!(filtered_agents = filtered.len(), "filtered agent list");
 
     // Sort by display_name (if present) or name for user-friendly ordering
     // This ensures agents are listed in the order users expect (by visible name)

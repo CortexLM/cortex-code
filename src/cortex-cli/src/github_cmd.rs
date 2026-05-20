@@ -587,6 +587,11 @@ fn get_help_message() -> String {
 /// Check GitHub Actions installation status.
 async fn run_status(args: StatusArgs) -> Result<()> {
     let repo_path = args.path.unwrap_or_else(|| PathBuf::from("."));
+    tracing::debug!(
+        path = %repo_path.display(),
+        json = args.json,
+        "checking GitHub Actions installation status"
+    );
 
     let mut status = InstallationStatus::default();
 
@@ -601,6 +606,10 @@ async fn run_status(args: StatusArgs) -> Result<()> {
                 if content.contains("Cortex") {
                     status.workflow_installed = true;
                     status.workflow_path = Some(path.clone());
+                    tracing::debug!(
+                        workflow_path = %path.display(),
+                        "found Cortex workflow"
+                    );
 
                     // Check workflow features
                     if content.contains("issue_comment") {
@@ -623,6 +632,13 @@ async fn run_status(args: StatusArgs) -> Result<()> {
 
     // Check if we're in a git repo
     status.is_git_repo = repo_path.join(".git").exists();
+    tracing::debug!(
+        is_git_repo = status.is_git_repo,
+        github_dir_exists = status.github_dir_exists,
+        workflow_installed = status.workflow_installed,
+        features = ?status.features,
+        "computed GitHub Actions installation status"
+    );
 
     if args.json {
         let json = serde_json::to_string_pretty(&status)?;
