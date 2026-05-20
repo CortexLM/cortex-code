@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 /// Lock CLI command.
 #[derive(Debug, Parser)]
+#[command(override_usage = "cortex lock [SESSION_ID]\n       cortex lock <COMMAND> [ARGS]")]
 pub struct LockCli {
     #[command(subcommand)]
     pub subcommand: Option<LockSubcommand>,
