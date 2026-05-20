@@ -154,12 +154,33 @@ fn save_lock_file(lock_file: &LockFile) -> Result<()> {
 /// Check if a session is locked.
 pub fn is_session_locked(session_id: &str) -> bool {
     match load_lock_file() {
-        Ok(lock_file) => lock_file.locked_sessions.iter().any(|entry| {
-            entry.session_id == session_id
-                || session_id.starts_with(&entry.session_id[..8.min(entry.session_id.len())])
-        }),
+        Ok(lock_file) => lock_file
+            .locked_sessions
+            .iter()
+            .any(|entry| lock_matches_session(&entry.session_id, session_id)),
         Err(_) => false,
     }
+}
+
+/// Remove lock entries matching a session ID.
+pub fn remove_session_locks(session_id: &str) -> Result<usize> {
+    let mut lock_file = load_lock_file()?;
+    let original_len = lock_file.locked_sessions.len();
+    lock_file
+        .locked_sessions
+        .retain(|entry| !lock_matches_session(&entry.session_id, session_id));
+
+    let removed = original_len - lock_file.locked_sessions.len();
+    if removed > 0 {
+        save_lock_file(&lock_file)?;
+    }
+
+    Ok(removed)
+}
+
+fn lock_matches_session(locked_session_id: &str, session_id: &str) -> bool {
+    locked_session_id == session_id
+        || session_id.starts_with(&locked_session_id[..8.min(locked_session_id.len())])
 }
 
 impl LockCli {
