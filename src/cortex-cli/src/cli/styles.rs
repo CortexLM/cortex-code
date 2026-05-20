@@ -72,8 +72,8 @@ pub mod categories {
     pub const SESSION: &str = "📋 Session Management";
     pub const AUTH: &str = "🔐 Authentication";
     pub const EXTENSION: &str = "🔌 Extensibility";
-    pub const CONFIG: &str = "⚙️ Configuration";
-    pub const UTILITIES: &str = "🛠️ Utilities";
+    pub const CONFIG: &str = "⚙️ Configuration Commands";
+    pub const UTILITIES: &str = "🛠️ Utility Commands";
     pub const MAINTENANCE: &str = "🔧 Maintenance";
 }
 
@@ -107,13 +107,13 @@ pub const HELP_TEMPLATE: &str = color_print::cstr!(
     <green,bold>mcp</>         Manage MCP (Model Context Protocol) servers
     <green,bold>acp</>         Start ACP server for IDE integration (e.g., Zed)
 
-<cyan,bold>⚙️ Configuration:</>
+<cyan,bold>⚙️ Configuration Commands:</>
     <green,bold>config</>      Show or edit configuration
     <green,bold>models</>      List available models
     <green,bold>features</>    Inspect feature flags
     <green,bold>init</>        Initialize AGENTS.md in the current directory
 
-<cyan,bold>🛠️ Utilities:</>
+<cyan,bold>🛠️ Utility Commands:</>
     <green,bold>github</>      GitHub integration (actions, workflows) <dim>[aliases: gh]</>
     <green,bold>pr</>          Checkout a pull request
     <green,bold>scrape</>      Scrape web content to markdown/text/html
