@@ -67,7 +67,7 @@ pub async fn run_generate(args: CreateArgs) -> Result<()> {
     };
 
     // Validate model argument
-    let model_arg = args.model.trim();
+    let model_arg = args.model.as_deref().unwrap_or("gpt-4o").trim();
     if model_arg.is_empty() {
         bail!("Error: Model name cannot be empty");
     }
