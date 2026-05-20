@@ -127,7 +127,7 @@ pub async fn run_ripgrep(args: RipgrepArgs) -> Result<()> {
             println!();
             println!("To install ripgrep:");
             println!("  macOS:   brew install ripgrep");
-            println!("  Linux:   apt install ripgrep / dnf install ripgrep");
+            println!("  Linux:   sudo apt install -y ripgrep / sudo dnf install -y ripgrep");
             println!("  Windows: winget install BurntSushi.ripgrep.MSVC");
 
             // Offer to install if --install flag was provided
