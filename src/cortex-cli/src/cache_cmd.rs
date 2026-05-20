@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 use clap::Parser;
+use cortex_update::VersionCache;
 use serde::Serialize;
 use std::path::PathBuf;
 
@@ -106,6 +107,11 @@ struct CacheCategory {
     size_bytes: u64,
     size_human: String,
     item_count: usize,
+}
+
+struct ClearTarget {
+    name: &'static str,
+    path: PathBuf,
 }
 
 /// Get the cache directory.
@@ -257,39 +263,62 @@ async fn run_show(args: CacheShowArgs) -> Result<()> {
 async fn run_clear(args: CacheClearArgs) -> Result<()> {
     let cache_dir = get_cache_dir();
 
-    if !cache_dir.exists() {
-        println!("Cache directory does not exist. Nothing to clear.");
-        return Ok(());
-    }
-
     // Determine what to clear
     let clear_all = !args.models && !args.responses && !args.updates;
 
-    let mut to_clear: Vec<(&str, PathBuf)> = Vec::new();
+    let mut to_clear: Vec<ClearTarget> = Vec::new();
 
     if clear_all || args.models {
-        to_clear.push(("models", cache_dir.join("models")));
+        to_clear.push(ClearTarget {
+            name: "models",
+            path: cache_dir.join("models"),
+        });
     }
     if clear_all || args.responses {
-        to_clear.push(("responses", cache_dir.join("responses")));
+        to_clear.push(ClearTarget {
+            name: "responses",
+            path: cache_dir.join("responses"),
+        });
     }
     if clear_all || args.updates {
-        to_clear.push(("updates", cache_dir.join("updates")));
+        to_clear.push(ClearTarget {
+            name: "updates",
+            path: cache_dir.join("updates"),
+        });
+        if let Some(path) = VersionCache::cache_path() {
+            to_clear.push(ClearTarget {
+                name: "update metadata",
+                path,
+            });
+        }
     }
     if clear_all {
-        to_clear.push(("logs", cache_dir.join("logs")));
-        to_clear.push(("temp", cache_dir.join("temp")));
+        to_clear.push(ClearTarget {
+            name: "logs",
+            path: cache_dir.join("logs"),
+        });
+        to_clear.push(ClearTarget {
+            name: "temp",
+            path: cache_dir.join("temp"),
+        });
     }
 
     // Calculate size to be cleared
     let mut total_to_clear = 0u64;
-    for (_, path) in &to_clear {
-        if path.exists() {
-            total_to_clear += dir_size(path);
+    let mut existing_targets = 0usize;
+    for target in &to_clear {
+        if target.path.exists() {
+            existing_targets += 1;
+            total_to_clear += dir_size(&target.path);
         }
     }
 
-    if total_to_clear == 0 {
+    if existing_targets == 0 {
+        if !cache_dir.exists() {
+            println!("Cache directory does not exist. Nothing to clear.");
+            return Ok(());
+        }
+
         println!("Cache is already empty. Nothing to clear.");
         return Ok(());
     }
@@ -297,10 +326,15 @@ async fn run_clear(args: CacheClearArgs) -> Result<()> {
     // Show what will be cleared
     if args.dry_run {
         println!("Dry run - would clear:");
-        for (name, path) in &to_clear {
-            if path.exists() {
-                let size = dir_size(path);
-                println!("  {} ({}) - {}", name, format_size(size), path.display());
+        for target in &to_clear {
+            if target.path.exists() {
+                let size = dir_size(&target.path);
+                println!(
+                    "  {} ({}) - {}",
+                    target.name,
+                    format_size(size),
+                    target.path.display()
+                );
             }
         }
         println!("\nTotal: {}", format_size(total_to_clear));
@@ -324,14 +358,20 @@ async fn run_clear(args: CacheClearArgs) -> Result<()> {
 
     // Clear
     let mut cleared = 0u64;
-    for (name, path) in &to_clear {
-        if path.exists() {
-            let size = dir_size(path);
-            if let Err(e) = std::fs::remove_dir_all(path) {
-                eprintln!("Warning: Failed to clear {}: {}", name, e);
+    for target in &to_clear {
+        if target.path.exists() {
+            let size = dir_size(&target.path);
+            let remove_result = if target.path.is_dir() {
+                std::fs::remove_dir_all(&target.path)
+            } else {
+                std::fs::remove_file(&target.path)
+            };
+
+            if let Err(e) = remove_result {
+                eprintln!("Warning: Failed to clear {}: {}", target.name, e);
             } else {
                 cleared += size;
-                println!("Cleared {} ({})", name, format_size(size));
+                println!("Cleared {} ({})", target.name, format_size(size));
             }
         }
     }
