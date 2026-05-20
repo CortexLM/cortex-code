@@ -694,6 +694,15 @@ pub async fn run_delete(delete_cli: DeleteCommand) -> Result<()> {
     // Resolve session ID
     let conversation_id = resolve_session_id(&delete_cli.session_id, &config.cortex_home)
         .map_err(|e| anyhow::anyhow!("{}", e))?;
+    let conversation_id_str = conversation_id.to_string();
+
+    if crate::lock_cmd::is_session_locked(&conversation_id_str) && !delete_cli.force {
+        bail!(
+            "Session {} is locked. Use `cortex lock remove {}` first, or rerun delete with --force.",
+            conversation_id,
+            conversation_id
+        );
+    }
 
     // Confirm deletion
     if !delete_cli.yes {
@@ -717,7 +726,15 @@ pub async fn run_delete(delete_cli: DeleteCommand) -> Result<()> {
         cortex_engine::rollout::get_rollout_path(&config.cortex_home, &conversation_id);
     if rollout_path.exists() {
         std::fs::remove_file(&rollout_path)?;
+        let removed_locks = crate::lock_cmd::remove_session_locks(&conversation_id_str)?;
         print_success(&format!("Deleted session: {}", conversation_id));
+        if removed_locks > 0 {
+            print_info(&format!(
+                "Removed {} lock entr{} for deleted session.",
+                removed_locks,
+                if removed_locks == 1 { "y" } else { "ies" }
+            ));
+        }
     } else {
         print_warning("Session file not found (may have been already deleted).");
     }
