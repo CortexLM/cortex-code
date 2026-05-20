@@ -81,6 +81,16 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
+fn matches_level_filter(path: &PathBuf, level: Option<&str>) -> bool {
+    let Some(level) = level else {
+        return true;
+    };
+    let level = level.to_uppercase();
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|name| name.to_uppercase().contains(&level))
+}
+
 impl LogsCli {
     /// Run the logs command.
     pub async fn run(self) -> Result<()> {
@@ -329,6 +339,7 @@ impl LogsCli {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_file()
+                    && matches_level_filter(&path, self.level.as_deref())
                     && let Ok(meta) = entry.metadata()
                     && let Ok(modified) = meta.modified()
                     && modified < cutoff_time
