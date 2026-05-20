@@ -31,12 +31,10 @@ pub struct UninstallCli {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Skip confirmation prompt
-    #[arg(long, short = 'f')]
-    pub force: bool,
-
-    /// Auto-confirm (alias for --force)
-    #[arg(long, short = 'y')]
+    /// Skip confirmation prompt.
+    ///
+    /// Aliases: --force, -f (for compatibility)
+    #[arg(long = "yes", short = 'y', visible_aliases = ["force"], short_alias = 'f')]
     pub yes: bool,
 
     /// Create backup before uninstalling
@@ -182,7 +180,7 @@ impl UninstallCli {
         }
 
         // Confirm before proceeding (Issue #3682: confirm BEFORE creating backup)
-        if !self.force && !self.yes {
+        if !self.yes {
             println!("\nAre you sure you want to uninstall Cortex CLI? [y/N]");
             if !prompt_yes_no()? {
                 println!("Uninstall cancelled.");
@@ -195,7 +193,7 @@ impl UninstallCli {
             print_info("Creating backup...");
             if let Err(e) = create_backup(&items_to_remove) {
                 print_warning(&format!("Failed to create backup: {e}"));
-                if !self.force && !self.yes {
+                if !self.yes {
                     println!("Continue without backup? [y/N]");
                     if !prompt_yes_no()? {
                         print_info("Uninstall cancelled.");
