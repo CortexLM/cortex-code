@@ -3,6 +3,7 @@
 //! The ACP protocol enables IDE integration (like Zed) with Cortex.
 //! Supports both stdio and HTTP transports for flexible integration.
 
+use crate::utils::paths::get_cortex_home;
 use anyhow::{Result, bail};
 use clap::Parser;
 use cortex_common::resolve_model_alias;
@@ -58,9 +59,7 @@ impl AcpCli {
     pub async fn run(self) -> Result<()> {
         // Validate agent exists early if specified (Issue #1958)
         if let Some(ref agent_name) = self.agent {
-            let cortex_home = dirs::home_dir()
-                .map(|h| h.join(".cortex"))
-                .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+            let cortex_home = acp_agent_registry_home();
             let cwd = std::env::current_dir().ok();
             let registry = cortex_engine::AgentRegistry::new(&cortex_home, cwd.as_deref());
             // Scan for agents in standard locations
@@ -123,6 +122,10 @@ impl AcpCli {
         let server = cortex_engine::acp::AcpServer::new(config);
         server.run_http(addr).await
     }
+}
+
+fn acp_agent_registry_home() -> PathBuf {
+    get_cortex_home()
 }
 
 #[cfg(test)]
