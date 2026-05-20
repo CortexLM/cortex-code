@@ -5,11 +5,13 @@ use std::path::Path;
 
 /// Mask an API key for safe display.
 pub fn safe_format_key(key: &str) -> String {
-    if key.len() <= 13 {
+    let char_count = key.chars().count();
+    if char_count <= 13 {
         return "***".to_string();
     }
-    let prefix = &key[..8];
-    let suffix = &key[key.len() - 5..];
+
+    let prefix: String = key.chars().take(8).collect();
+    let suffix: String = key.chars().skip(char_count - 5).collect();
     format!("{prefix}***{suffix}")
 }
 
@@ -45,5 +47,17 @@ mod tests {
     fn test_safe_format_key_short() {
         let key = "sk-proj-12345";
         assert_eq!(safe_format_key(key), "***");
+    }
+
+    #[test]
+    fn test_safe_format_key_non_ascii_boundary() {
+        let key = "aaaaaaaéaaaaa";
+        assert_eq!(safe_format_key(key), "***");
+    }
+
+    #[test]
+    fn test_safe_format_key_long_non_ascii() {
+        let key = "sk-proj-ééééééé-token";
+        assert_eq!(safe_format_key(key), "sk-proj-***token");
     }
 }
