@@ -81,6 +81,15 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
+fn parse_log_level(line: &str) -> Option<&str> {
+    line.split(|c: char| !c.is_ascii_alphanumeric())
+        .find(|part| matches!(*part, "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR"))
+}
+
+fn line_matches_level(line: &str, level: &str) -> bool {
+    parse_log_level(&line.to_uppercase()).is_some_and(|line_level| line_level == level)
+}
+
 impl LogsCli {
     /// Run the logs command.
     pub async fn run(self) -> Result<()> {
@@ -174,7 +183,7 @@ impl LogsCli {
             let level_upper = level.to_uppercase();
             lines
                 .iter()
-                .filter(|line| line.to_uppercase().contains(&level_upper))
+                .filter(|line| line_matches_level(line, &level_upper))
                 .copied()
                 .collect()
         } else {
@@ -240,7 +249,7 @@ impl LogsCli {
                 Ok(_) => {
                     // Apply level filter if specified
                     if let Some(ref level) = level_filter
-                        && !line.to_uppercase().contains(&level.to_uppercase())
+                        && !line_matches_level(&line, &level.to_uppercase())
                     {
                         continue;
                     }
