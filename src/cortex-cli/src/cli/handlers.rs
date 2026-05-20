@@ -836,7 +836,7 @@ pub async fn show_config(config_cli: ConfigCommand) -> Result<()> {
             if config_path.exists() {
                 let content = std::fs::read_to_string(&config_path)?;
                 let config: toml::Value = toml::from_str(&content)?;
-                if let Some(value) = config.get(&args.key) {
+                if let Some(value) = get_config_value(&config, &args.key) {
                     println!("{}", value);
                 } else {
                     bail!("Key '{}' not found in configuration", args.key);
@@ -899,6 +899,19 @@ pub async fn show_config(config_cli: ConfigCommand) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn get_config_value<'a>(config: &'a toml::Value, key: &str) -> Option<&'a toml::Value> {
+    config.get(key).or_else(|| {
+        let mut current = config;
+        for part in key.split('.') {
+            if part.is_empty() {
+                return None;
+            }
+            current = current.get(part)?;
+        }
+        Some(current)
+    })
 }
 
 /// List features.
