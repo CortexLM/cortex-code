@@ -25,6 +25,8 @@ pub enum SnapshotError {
     Io(#[from] std::io::Error),
     #[error("Failed to create snapshot: {0}")]
     CreateFailed(String),
+    #[error("Invalid snapshot storage ID: {0}")]
+    InvalidId(String),
     #[error("Failed to restore snapshot: {0}")]
     RestoreFailed(String),
     #[error("Git command '{command}' timed out after {timeout_secs}s")]
