@@ -130,12 +130,13 @@ impl<'a> Widget for FormModal<'a> {
 
             let (display_value, input_style) = match &field.kind {
                 FieldKind::Text | FieldKind::Number => {
-                    let val = if field.value.is_empty() {
+                    let show_placeholder = is_focused && field.value.is_empty();
+                    let val = if show_placeholder {
                         field.placeholder.clone().unwrap_or_default()
                     } else {
                         field.value.clone()
                     };
-                    let style = if field.value.is_empty() && field.placeholder.is_some() {
+                    let style = if show_placeholder && field.placeholder.is_some() {
                         Style::default().fg(self.colors.text_muted)
                     } else {
                         Style::default().fg(self.colors.text)
@@ -143,12 +144,15 @@ impl<'a> Widget for FormModal<'a> {
                     (val, style)
                 }
                 FieldKind::Secret => {
-                    let val = if field.value.is_empty() {
+                    let show_placeholder = is_focused && field.value.is_empty();
+                    let val = if show_placeholder {
                         field.placeholder.clone().unwrap_or_default()
+                    } else if field.value.is_empty() {
+                        String::new()
                     } else {
                         "*".repeat(field.value.len())
                     };
-                    let style = if field.value.is_empty() && field.placeholder.is_some() {
+                    let style = if show_placeholder && field.placeholder.is_some() {
                         Style::default().fg(self.colors.text_muted)
                     } else {
                         Style::default().fg(self.colors.text)
