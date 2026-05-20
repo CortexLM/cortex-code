@@ -145,4 +145,31 @@ impl UpdateConfig {
     pub fn is_version_skipped(&self, version: &str) -> bool {
         self.skip_version.as_deref() == Some(version)
     }
+
+    /// Check if the user has already been notified about a version.
+    pub fn is_version_notified(&self, version: &str) -> bool {
+        self.last_notified_version.as_deref() == Some(version)
+    }
+
+    /// Remember that the user has been notified about a version.
+    pub fn mark_version_notified(&mut self, version: &str) {
+        self.last_notified_version = Some(version.to_string());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tracks_last_notified_version() {
+        let mut config = UpdateConfig::default();
+
+        assert!(!config.is_version_notified("1.2.3"));
+
+        config.mark_version_notified("1.2.3");
+
+        assert!(config.is_version_notified("1.2.3"));
+        assert!(!config.is_version_notified("1.2.4"));
+    }
 }

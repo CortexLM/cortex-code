@@ -557,7 +557,7 @@ impl AppRunner {
         // 2. Background update check task - check for new versions without blocking startup
         let update_check_task = tokio::spawn(async move {
             match UpdateManager::new() {
-                Ok(manager) => match manager.check_update().await {
+                Ok(mut manager) => match manager.check_update_for_notification().await {
                     Ok(info) => info,
                     Err(e) => {
                         tracing::debug!("Update check failed: {}", e);
