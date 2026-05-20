@@ -41,6 +41,11 @@ impl TaskExecutor {
             .get("command")
             .and_then(|v| v.as_str())
             .map(String::from);
+        let working_dir = task
+            .metadata
+            .get("working_dir")
+            .and_then(|v| v.as_str())
+            .map(String::from);
 
         if self.verbose {
             if let Some(ref cmd) = command {
@@ -55,7 +60,7 @@ impl TaskExecutor {
 
         // If there's a command, execute it
         let (status, output, error) = if let Some(cmd) = command {
-            match self.run_command(&cmd).await {
+            match self.run_command(&cmd, working_dir.as_deref()).await {
                 Ok(output) => (TaskStatus::Completed, Some(output), None),
                 Err(e) => (TaskStatus::Failed, None, Some(e.to_string())),
             }
@@ -80,14 +85,19 @@ impl TaskExecutor {
     }
 
     /// Run a shell command with timeout.
-    async fn run_command(&self, cmd: &str) -> Result<String> {
+    async fn run_command(&self, cmd: &str, working_dir: Option<&str>) -> Result<String> {
         let timeout_duration = self.timeout;
 
         let result = tokio::time::timeout(timeout_duration, async {
             let (shell, shell_arg) = shell_invocation();
-            let output = tokio::process::Command::new(shell)
-                .arg(shell_arg)
-                .arg(cmd)
+            let mut command = tokio::process::Command::new(shell);
+            command.arg(shell_arg).arg(cmd);
+
+            if let Some(dir) = working_dir {
+                command.current_dir(dir);
+            }
+
+            let output = command
                 .output()
                 .await
                 .context("Failed to execute command")?;
