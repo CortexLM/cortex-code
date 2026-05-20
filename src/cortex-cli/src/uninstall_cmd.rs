@@ -14,7 +14,7 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// Uninstall CLI command.
 #[derive(Debug, Parser)]
@@ -177,6 +177,13 @@ impl UninstallCli {
 
         // Dry run mode - stop here
         if self.dry_run {
+            if self.backup {
+                println!();
+                println!(
+                    "Backup location: {}",
+                    get_backup_root()?.join("<timestamp>").display()
+                );
+            }
             println!("\n[DRY RUN] No files were deleted.");
             return Ok(());
         }
@@ -319,8 +326,9 @@ fn collect_removal_items() -> Result<Vec<RemovalItem>> {
     // 1. Binary locations
     items.extend(collect_binary_locations(&home_dir)?);
 
-    // 2. Cortex home directory (~/.cortex)
-    items.extend(collect_cortex_home_items(&home_dir)?);
+    // 2. Cortex home directory (~/.cortex or CORTEX_HOME)
+    let cortex_home = cortex_common::get_cortex_home().unwrap_or_else(|| home_dir.join(".cortex"));
+    items.extend(collect_cortex_home_items(&cortex_home)?);
 
     // 3. Platform-specific locations
     #[cfg(target_os = "windows")]
@@ -386,10 +394,9 @@ fn collect_binary_locations(home_dir: &Path) -> Result<Vec<RemovalItem>> {
     Ok(items)
 }
 
-/// Collect items from the ~/.cortex directory.
-fn collect_cortex_home_items(home_dir: &Path) -> Result<Vec<RemovalItem>> {
+/// Collect items from the Cortex home directory.
+fn collect_cortex_home_items(cortex_home: &Path) -> Result<Vec<RemovalItem>> {
     let mut items = Vec::new();
-    let cortex_home = home_dir.join(".cortex");
 
     if !cortex_home.exists() {
         return Ok(items);
@@ -508,7 +515,7 @@ fn collect_cortex_home_items(home_dir: &Path) -> Result<Vec<RemovalItem>> {
         == 0
     {
         items.push(RemovalItem {
-            path: cortex_home.clone(),
+            path: cortex_home.to_path_buf(),
             description: "Cortex home directory".to_string(),
             size: get_dir_size(&cortex_home),
             requires_sudo: false,
@@ -517,7 +524,7 @@ fn collect_cortex_home_items(home_dir: &Path) -> Result<Vec<RemovalItem>> {
     } else {
         // Add the parent directory itself at the end (to be removed after contents)
         items.push(RemovalItem {
-            path: cortex_home,
+            path: cortex_home.to_path_buf(),
             description: "Cortex home directory (if empty)".to_string(),
             size: 0,
             requires_sudo: false,
@@ -710,10 +717,9 @@ fn prompt_yes_no() -> Result<bool> {
 
 /// Create a backup of items before removal.
 fn create_backup(items: &[RemovalItem]) -> Result<()> {
-    let backup_dir = dirs::home_dir()
-        .context("Could not determine home directory")?
-        .join(".cortex-backup")
-        .join(chrono::Local::now().format("%Y%m%d_%H%M%S").to_string());
+    let backup_root = get_backup_root()?;
+    let backup_dir = backup_root.join(chrono::Local::now().format("%Y%m%d_%H%M%S").to_string());
+    let home_dir = dirs::home_dir().unwrap_or_default();
 
     fs::create_dir_all(&backup_dir)?;
 
@@ -723,11 +729,11 @@ fn create_backup(items: &[RemovalItem]) -> Result<()> {
         if !item.path.exists() {
             continue;
         }
+        if item.path == backup_root || item.path.starts_with(&backup_root) {
+            continue;
+        }
 
-        let relative_path = item
-            .path
-            .strip_prefix(dirs::home_dir().unwrap_or_default())
-            .unwrap_or(&item.path);
+        let relative_path = backup_relative_path(&item.path, &home_dir);
         let backup_path = backup_dir.join(relative_path);
 
         if let Some(parent) = backup_path.parent() {
@@ -735,7 +741,7 @@ fn create_backup(items: &[RemovalItem]) -> Result<()> {
         }
 
         if item.path.is_dir() {
-            copy_dir_all(&item.path, &backup_path)?;
+            copy_dir_all_excluding(&item.path, &backup_path, &backup_root)?;
         } else {
             fs::copy(&item.path, &backup_path)?;
         }
@@ -745,16 +751,42 @@ fn create_backup(items: &[RemovalItem]) -> Result<()> {
     Ok(())
 }
 
-/// Copy a directory recursively.
-fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
+fn get_backup_root() -> Result<PathBuf> {
+    Ok(cortex_common::get_cortex_home()
+        .context("Could not determine Cortex home directory")?
+        .join(".cortex-backup"))
+}
+
+fn backup_relative_path(path: &Path, home_dir: &Path) -> PathBuf {
+    if let Ok(relative_path) = path.strip_prefix(home_dir) {
+        return relative_path.to_path_buf();
+    }
+
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part),
+            _ => None,
+        })
+        .collect()
+}
+
+fn path_contains(path: &Path, child: &Path) -> bool {
+    path == child || child.starts_with(path)
+}
+
+/// Copy a directory recursively, skipping a path if it appears inside the source.
+fn copy_dir_all_excluding(src: &Path, dst: &Path, excluded: &Path) -> Result<()> {
     fs::create_dir_all(dst)?;
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let src_path = entry.path();
+        if !excluded.as_os_str().is_empty() && path_contains(&src_path, excluded) {
+            continue;
+        }
         let dst_path = dst.join(entry.file_name());
 
         if src_path.is_dir() {
-            copy_dir_all(&src_path, &dst_path)?;
+            copy_dir_all_excluding(&src_path, &dst_path, excluded)?;
         } else {
             fs::copy(&src_path, &dst_path)?;
         }
@@ -926,6 +958,7 @@ fn clean_rc_file(path: &Path, patterns: &[&str]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_format_size() {
@@ -975,5 +1008,45 @@ mod tests {
             | InstallMethod::Installer
             | InstallMethod::Unknown => {}
         }
+    }
+
+    #[test]
+    #[serial]
+    fn test_backup_root_uses_cortex_home() {
+        let original = std::env::var_os("CORTEX_HOME");
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cortex_home = temp_dir.path().join("custom-cortex-home");
+
+        // SAFETY: This serialized test restores CORTEX_HOME before returning.
+        unsafe {
+            std::env::set_var("CORTEX_HOME", &cortex_home);
+        }
+
+        assert_eq!(
+            get_backup_root().unwrap(),
+            cortex_home.join(".cortex-backup")
+        );
+
+        // SAFETY: This serialized test restores CORTEX_HOME to its original value.
+        unsafe {
+            match original {
+                Some(value) => std::env::set_var("CORTEX_HOME", value),
+                None => std::env::remove_var("CORTEX_HOME"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_backup_relative_path_never_returns_absolute_path() {
+        let relative_path = backup_relative_path(
+            Path::new("/tmp/custom-cortex-home/config.toml"),
+            Path::new("/home/tester"),
+        );
+
+        assert!(!relative_path.is_absolute());
+        assert_eq!(
+            relative_path,
+            PathBuf::from("tmp/custom-cortex-home/config.toml")
+        );
     }
 }
