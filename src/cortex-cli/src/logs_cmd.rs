@@ -9,7 +9,7 @@
 use anyhow::Result;
 use clap::Parser;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Logs CLI command.
 #[derive(Debug, Parser)]
@@ -81,6 +81,12 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
+fn is_log_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|name| name.ends_with(".log") || name.ends_with(".txt"))
+}
+
 impl LogsCli {
     /// Run the logs command.
     pub async fn run(self) -> Result<()> {
@@ -113,11 +119,8 @@ impl LogsCli {
         if let Ok(entries) = std::fs::read_dir(&logs_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_file() {
-                    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if name.ends_with(".log") || name.ends_with(".txt") {
-                        log_files.push(path);
-                    }
+                if path.is_file() && is_log_file(&path) {
+                    log_files.push(path);
                 }
             }
         }
@@ -266,6 +269,7 @@ impl LogsCli {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_file()
+                    && is_log_file(&path)
                     && let Ok(meta) = entry.metadata()
                 {
                     let modified = meta
