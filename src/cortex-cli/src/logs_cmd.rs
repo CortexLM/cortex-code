@@ -9,7 +9,7 @@
 use anyhow::Result;
 use clap::Parser;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Logs CLI command.
 #[derive(Debug, Parser)]
@@ -79,6 +79,12 @@ fn format_size(bytes: u64) -> String {
     } else {
         format!("{} B", bytes)
     }
+}
+
+fn is_log_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|name| name.ends_with(".log") || name.ends_with(".txt"))
 }
 
 impl LogsCli {
@@ -329,6 +335,7 @@ impl LogsCli {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_file()
+                    && is_log_file(&path)
                     && let Ok(meta) = entry.metadata()
                     && let Ok(modified) = meta.modified()
                     && modified < cutoff_time
