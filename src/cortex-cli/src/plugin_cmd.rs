@@ -16,7 +16,7 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -703,6 +703,22 @@ fn get_plugins_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(".cortex/plugins"))
 }
 
+fn installed_plugin_path(plugins_dir: &Path, name: &str) -> Result<PathBuf> {
+    let mut components = Path::new(name).components();
+    let is_single_component = matches!(components.next(), Some(Component::Normal(_)))
+        && components.next().is_none()
+        && !name.chars().any(|c| matches!(c, '/' | '\\' | '\0'));
+
+    if name.is_empty() || !is_single_component {
+        bail!(
+            "Invalid plugin name '{}'. Use an installed plugin name, not a path.",
+            name
+        );
+    }
+
+    Ok(plugins_dir.join(name))
+}
+
 // =============================================================================
 // Plugin Scaffolding Functions
 // =============================================================================
@@ -1145,7 +1161,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
 
 async fn run_remove(args: PluginRemoveArgs) -> Result<()> {
     let plugins_dir = get_plugins_dir();
-    let plugin_path = plugins_dir.join(&args.name);
+    let plugin_path = installed_plugin_path(&plugins_dir, &args.name)?;
 
     if !plugin_path.exists() {
         bail!("Plugin '{}' is not installed.", args.name);
@@ -1171,7 +1187,7 @@ async fn run_remove(args: PluginRemoveArgs) -> Result<()> {
 
 async fn run_enable(args: PluginEnableArgs) -> Result<()> {
     let plugins_dir = get_plugins_dir();
-    let plugin_path = plugins_dir.join(&args.name);
+    let plugin_path = installed_plugin_path(&plugins_dir, &args.name)?;
     let manifest_path = plugin_path.join("plugin.toml");
 
     if !manifest_path.exists() {
@@ -1192,7 +1208,7 @@ async fn run_enable(args: PluginEnableArgs) -> Result<()> {
 
 async fn run_disable(args: PluginDisableArgs) -> Result<()> {
     let plugins_dir = get_plugins_dir();
-    let plugin_path = plugins_dir.join(&args.name);
+    let plugin_path = installed_plugin_path(&plugins_dir, &args.name)?;
     let manifest_path = plugin_path.join("plugin.toml");
 
     if !manifest_path.exists() {
@@ -1213,7 +1229,7 @@ async fn run_disable(args: PluginDisableArgs) -> Result<()> {
 
 async fn run_show(args: PluginShowArgs) -> Result<()> {
     let plugins_dir = get_plugins_dir();
-    let plugin_path = plugins_dir.join(&args.name);
+    let plugin_path = installed_plugin_path(&plugins_dir, &args.name)?;
     let manifest_path = plugin_path.join("plugin.toml");
 
     if !manifest_path.exists() {
