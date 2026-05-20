@@ -380,7 +380,12 @@ impl ExecRunner {
                 // Execute each tool call
                 for tool_call in &response.tool_calls {
                     let record = self
-                        .execute_tool_call(tool_call, &mut files_modified, &mut commands_executed)
+                        .execute_tool_call(
+                            tool_call,
+                            &conversation_id,
+                            &mut files_modified,
+                            &mut commands_executed,
+                        )
                         .await;
 
                     // Add tool result to conversation
@@ -629,6 +634,7 @@ impl ExecRunner {
     async fn execute_tool_call(
         &self,
         tool_call: &ToolCall,
+        conversation_id: &ConversationId,
         files_modified: &mut Vec<String>,
         commands_executed: &mut Vec<String>,
     ) -> ToolCallRecord {
@@ -654,11 +660,7 @@ impl ExecRunner {
             }
         };
 
-        // Create tool context
-        let context = ToolContext::new(self.options.cwd.clone())
-            .with_auto_approve(self.options.full_auto)
-            .with_conversation_id(ConversationId::new().to_string())
-            .with_call_id(&tool_call.id);
+        let context = self.build_tool_context(tool_call, conversation_id);
 
         // Execute the tool
         let result = self
@@ -720,6 +722,17 @@ impl ExecRunner {
         }
     }
 
+    fn build_tool_context(
+        &self,
+        tool_call: &ToolCall,
+        conversation_id: &ConversationId,
+    ) -> ToolContext {
+        ToolContext::new(self.options.cwd.clone())
+            .with_auto_approve(self.options.full_auto)
+            .with_conversation_id(conversation_id.to_string())
+            .with_call_id(&tool_call.id)
+    }
+
     /// Run with a specific prompt.
     pub async fn run_prompt(&mut self, prompt: &str) -> Result<ExecResult, CortexError> {
         self.options.prompt = prompt.to_string();
@@ -745,6 +758,7 @@ impl ExecRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cortex_engine::client::FunctionCall;
 
     #[tokio::test]
     async fn test_exec_runner_empty_prompt() {
@@ -820,5 +834,24 @@ mod tests {
 
         // Only Read and LS should be present
         assert!(tools.iter().all(|t| t.name() == "Read" || t.name() == "LS"));
+    }
+
+    #[test]
+    fn test_tool_context_uses_session_conversation_id() {
+        let conversation_id = ConversationId::new();
+        let tool_call = ToolCall {
+            id: "call-123".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "Read".to_string(),
+                arguments: "{}".to_string(),
+            },
+        };
+        let runner = ExecRunner::new(Config::default(), ExecOptions::default());
+
+        let context = runner.build_tool_context(&tool_call, &conversation_id);
+
+        assert_eq!(context.conversation_id, conversation_id.to_string());
+        assert_eq!(context.call_id, "call-123");
     }
 }
