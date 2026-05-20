@@ -45,6 +45,25 @@ pub async fn run_create(args: CreateArgs) -> Result<()> {
         }
     }
 
+    fn model_override_from_input(model_input: &str) -> Option<String> {
+        let model_input = model_input.trim();
+        if model_input.is_empty() {
+            return None;
+        }
+
+        // Issue #2328: Validate model name if provided
+        match validate_model_name(model_input) {
+            Ok(valid_model) => Some(valid_model),
+            Err(e) => {
+                eprintln!("Warning: {}", e);
+                eprintln!(
+                    "Using model name as-is. The agent may fail to run if the model doesn't exist."
+                );
+                Some(model_input.to_string())
+            }
+        }
+    }
+
     // Only show banner in interactive mode
     if !args.non_interactive {
         println!("🤖 Cortex Agent Creator");
@@ -220,30 +239,24 @@ pub async fn run_create(args: CreateArgs) -> Result<()> {
 
     // Get optional settings
     let (temperature, model, color) = if args.non_interactive {
-        (None, None, None)
+        (
+            None,
+            model_override_from_input(args.model.as_deref().unwrap_or("")),
+            None,
+        )
     } else {
         println!("\nOptional Settings (press Enter to skip):");
 
         let temp_input = prompt_input(&stdin, &mut stdout, "  Temperature (0.0-2.0)", Some(""))?;
         let temperature = temp_input.parse::<f32>().ok();
 
-        let model_input = prompt_input(&stdin, &mut stdout, "  Model override", Some(""))?;
-        // Issue #2328: Validate model name if provided
-        let model = if model_input.is_empty() {
-            None
-        } else {
-            // Validate the model name to prevent typos from being accepted
-            match validate_model_name(&model_input) {
-                Ok(valid_model) => Some(valid_model),
-                Err(e) => {
-                    eprintln!("Warning: {}", e);
-                    eprintln!(
-                        "Using model name as-is. The agent may fail to run if the model doesn't exist."
-                    );
-                    Some(model_input)
-                }
-            }
-        };
+        let model_input = prompt_input(
+            &stdin,
+            &mut stdout,
+            "  Model override",
+            Some(args.model.as_deref().unwrap_or("")),
+        )?;
+        let model = model_override_from_input(&model_input);
 
         let color = prompt_input(
             &stdin,

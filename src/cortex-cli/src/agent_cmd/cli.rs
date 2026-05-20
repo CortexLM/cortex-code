@@ -130,9 +130,10 @@ pub struct CreateArgs {
     #[arg(short, long, value_name = "DESCRIPTION")]
     pub generate: Option<String>,
 
-    /// Model to use for AI generation (default: gpt-4o).
-    #[arg(long, default_value = "gpt-4o")]
-    pub model: String,
+    /// Model to use for AI generation or as an agent override.
+    /// Defaults to gpt-4o when generating with --generate.
+    #[arg(long)]
+    pub model: Option<String>,
 }
 
 /// Arguments for edit command.
