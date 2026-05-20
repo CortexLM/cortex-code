@@ -1,6 +1,6 @@
 //! Rate limit types.
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Rate limit information.
@@ -174,11 +174,112 @@ pub fn parse_rate_limit_headers(
         info.tokens_remaining = Some(remaining);
     }
 
-    if let Some(reset) = headers.get("x-ratelimit-reset-requests") {
-        if let Ok(ts) = reset.parse::<i64>() {
-            info.reset_at = DateTime::from_timestamp(ts, 0);
-        }
+    if let Some(reset) = headers
+        .get("x-ratelimit-reset-requests")
+        .or_else(|| headers.get("x-ratelimit-reset-tokens"))
+    {
+        info.reset_at = parse_reset_header(reset, Utc::now());
     }
 
     info
+}
+
+fn parse_reset_header(value: &str, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+
+    if let Ok(timestamp) = value.parse::<i64>() {
+        return if timestamp > 1_000_000_000 {
+            DateTime::from_timestamp(timestamp, 0)
+        } else {
+            Some(now + Duration::seconds(timestamp))
+        };
+    }
+
+    if let Ok(timestamp) = value.parse::<DateTime<Utc>>() {
+        return Some(timestamp);
+    }
+
+    parse_duration_seconds(value).map(|seconds| now + Duration::seconds(seconds))
+}
+
+fn parse_duration_seconds(value: &str) -> Option<i64> {
+    let mut seconds = 0_i64;
+    let mut digits = String::new();
+    let mut saw_unit = false;
+
+    for ch in value.chars() {
+        if ch.is_ascii_digit() {
+            digits.push(ch);
+            continue;
+        }
+
+        let amount = digits.parse::<i64>().ok()?;
+        digits.clear();
+        saw_unit = true;
+        match ch {
+            'h' => seconds = seconds.checked_add(amount.checked_mul(60 * 60)?)?,
+            'm' => seconds = seconds.checked_add(amount.checked_mul(60)?)?,
+            's' => seconds = seconds.checked_add(amount)?,
+            _ => return None,
+        }
+    }
+
+    if saw_unit && digits.is_empty() {
+        Some(seconds)
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn fixed_now() -> DateTime<Utc> {
+        DateTime::from_timestamp(1_700_000_000, 0).unwrap()
+    }
+
+    #[test]
+    fn parses_openai_duration_reset_headers() {
+        let reset = parse_reset_header("6m0s", fixed_now()).unwrap();
+
+        assert_eq!(reset, fixed_now() + Duration::seconds(360));
+    }
+
+    #[test]
+    fn parses_plain_integer_reset_as_seconds_from_now() {
+        let reset = parse_reset_header("60", fixed_now()).unwrap();
+
+        assert_eq!(reset, fixed_now() + Duration::seconds(60));
+    }
+
+    #[test]
+    fn preserves_unix_timestamp_reset_headers() {
+        let reset = parse_reset_header("1800000000", fixed_now()).unwrap();
+
+        assert_eq!(reset, DateTime::from_timestamp(1_800_000_000, 0).unwrap());
+    }
+
+    #[test]
+    fn parses_reset_headers_in_rate_limit_info() {
+        let mut headers = HashMap::new();
+        headers.insert(
+            "x-ratelimit-reset-requests".to_string(),
+            "1m30s".to_string(),
+        );
+
+        let info = parse_rate_limit_headers(&headers);
+
+        assert!(info.reset_at.is_some());
+        assert!(info.reset_at.unwrap() > Utc::now());
+    }
+
+    #[test]
+    fn ignores_invalid_reset_headers() {
+        assert!(parse_reset_header("soon", fixed_now()).is_none());
+    }
 }
