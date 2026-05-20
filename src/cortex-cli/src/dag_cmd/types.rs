@@ -56,6 +56,9 @@ pub struct TaskSpecInput {
     /// Command to execute (optional).
     #[serde(default)]
     pub command: Option<String>,
+    /// Working directory for command execution.
+    #[serde(default)]
+    pub working_dir: Option<String>,
     /// Task dependencies (names of tasks).
     #[serde(default)]
     pub depends_on: Vec<String>,

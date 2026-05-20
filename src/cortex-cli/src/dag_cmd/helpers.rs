@@ -65,6 +65,10 @@ pub fn convert_specs(input: &DagSpecInput) -> Vec<TaskSpec> {
                 spec = spec.with_metadata("command", serde_json::json!(cmd));
             }
 
+            if let Some(working_dir) = &t.working_dir {
+                spec = spec.with_metadata("working_dir", serde_json::json!(working_dir));
+            }
+
             for (key, value) in &t.metadata {
                 spec = spec.with_metadata(key, value.clone());
             }
