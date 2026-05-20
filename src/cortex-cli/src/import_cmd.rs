@@ -1,6 +1,6 @@
 //! Session import command for Cortex CLI.
 //!
-//! Imports a session from a portable JSON format (exported or shared).
+//! Imports a session from a portable JSON or YAML format (exported or shared).
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
@@ -21,10 +21,10 @@ use crate::export_cmd::{ExportMessage, SessionExport};
 /// Maximum depth for processing messages to prevent stack overflow from deeply nested structures.
 const MAX_PROCESSING_DEPTH: usize = 10000;
 
-/// Import a session from JSON format.
+/// Import a session from JSON or YAML format.
 #[derive(Debug, Parser)]
 pub struct ImportCommand {
-    /// Path to the JSON file to import, URL to fetch, or "-" for stdin
+    /// Path to the JSON/YAML file to import, URL to fetch, or "-" for stdin
     #[arg(value_name = "FILE_OR_URL")]
     pub source: String,
 
@@ -50,7 +50,7 @@ impl ImportCommand {
             .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
 
         // Read the export data
-        let (json_content, is_from_url) = if self.source == "-" {
+        let (export_content, is_from_url) = if self.source == "-" {
             // Read from stdin
             use std::io::Read;
             let mut content = String::new();
@@ -70,41 +70,7 @@ impl ImportCommand {
         };
 
         // Parse the export with helpful error messages
-        let export: SessionExport = serde_json::from_str(&json_content).map_err(|e| {
-            // Create a helpful error message with content preview
-            let preview_len = json_content.len().min(200);
-            let content_preview = &json_content[..preview_len];
-            let truncated = if json_content.len() > 200 {
-                "..."
-            } else {
-                ""
-            };
-
-            let source_type = if is_from_url { "URL" } else { "file" };
-
-            // Detect common non-JSON content types
-            let hint = if content_preview.trim_start().starts_with("<!DOCTYPE")
-                || content_preview.trim_start().starts_with("<html")
-            {
-                "\nHint: The URL returned HTML content, not JSON. Make sure the URL points directly to a JSON export file."
-            } else if content_preview.trim_start().starts_with("<?xml") {
-                "\nHint: The URL returned XML content, not JSON. Make sure the URL points directly to a JSON export file."
-            } else if content_preview.is_empty() {
-                "\nHint: The response was empty. Make sure the URL is accessible and returns JSON content."
-            } else {
-                "\nHint: Ensure the file contains valid JSON. Check for syntax errors like missing commas, unclosed brackets, or invalid characters."
-            };
-
-            anyhow::anyhow!(
-                "Failed to parse JSON from {}: {}\n\nReceived content (first {} bytes):\n{}{}\n{}",
-                source_type,
-                e,
-                preview_len,
-                content_preview,
-                truncated,
-                hint
-            )
-        })?;
+        let export = parse_session_export(&export_content, is_from_url)?;
 
         // Validate version
         if export.version != 1 {
@@ -233,6 +199,50 @@ impl ImportCommand {
         }
 
         Ok(())
+    }
+}
+
+fn parse_session_export(content: &str, is_from_url: bool) -> Result<SessionExport> {
+    match serde_json::from_str(content) {
+        Ok(export) => return Ok(export),
+        Err(json_err) => {
+            let yaml_err = match serde_yaml::from_str(content) {
+                Ok(export) => return Ok(export),
+                Err(err) => err,
+            };
+
+            let content_preview: String = content.chars().take(200).collect();
+            let truncated = if content.chars().count() > 200 {
+                "..."
+            } else {
+                ""
+            };
+
+            let source_type = if is_from_url { "URL" } else { "file" };
+
+            // Detect common non-export content types
+            let hint = if content_preview.trim_start().starts_with("<!DOCTYPE")
+                || content_preview.trim_start().starts_with("<html")
+            {
+                "\nHint: The URL returned HTML content, not a JSON or YAML export file. Make sure the URL points directly to a session export file."
+            } else if content_preview.trim_start().starts_with("<?xml") {
+                "\nHint: The URL returned XML content, not a JSON or YAML export file. Make sure the URL points directly to a session export file."
+            } else if content_preview.is_empty() {
+                "\nHint: The response was empty. Make sure the URL is accessible and returns a JSON or YAML export file."
+            } else {
+                "\nHint: Ensure the file contains valid JSON or YAML exported by `cortex export`."
+            };
+
+            bail!(
+                "Failed to parse session export from {} as JSON or YAML. JSON error: {}. YAML error: {}\n\nReceived content (first 200 characters):\n{}{}\n{}",
+                source_type,
+                json_err,
+                yaml_err,
+                content_preview,
+                truncated,
+                hint
+            )
+        }
     }
 }
 
