@@ -32,14 +32,12 @@ pub async fn run_list(args: ListArgs) -> Result<()> {
 
     let agents = load_all_agents()?;
 
-    // Filter agents
-    let mut filtered: Vec<_> = agents
+    // Apply mode and name filters first, then hide hidden agents unless --all is set.
+    // The footer uses this same matching population so hidden counts and role counts
+    // describe the same set of agents.
+    let matching_agents: Vec<_> = agents
         .iter()
         .filter(|a| {
-            // Filter by visibility
-            if !args.all && a.hidden {
-                return false;
-            }
             // Filter by mode
             if args.primary && !matches!(a.mode, AgentMode::Primary | AgentMode::All) {
                 return false;
@@ -55,6 +53,11 @@ pub async fn run_list(args: ListArgs) -> Result<()> {
             }
             true
         })
+        .collect();
+    let mut filtered: Vec<_> = matching_agents
+        .iter()
+        .copied()
+        .filter(|a| args.all || !a.hidden)
         .collect();
 
     // Sort by display_name (if present) or name for user-friendly ordering
@@ -118,26 +121,31 @@ pub async fn run_list(args: ListArgs) -> Result<()> {
         );
     }
 
-    let primary_count = filtered
+    let hidden_count = if args.all {
+        0
+    } else {
+        matching_agents.iter().filter(|a| a.hidden).count()
+    };
+    let count_population = if hidden_count > 0 {
+        &matching_agents
+    } else {
+        &filtered
+    };
+
+    let primary_count = count_population
         .iter()
         .filter(|a| matches!(a.mode, AgentMode::Primary | AgentMode::All))
         .count();
-    let subagent_count = filtered
+    let subagent_count = count_population
         .iter()
         .filter(|a| matches!(a.mode, AgentMode::Subagent | AgentMode::All))
         .count();
 
-    // Calculate hidden agents count
-    let hidden_count = if !args.all {
-        agents.len() - filtered.len()
-    } else {
-        0
-    };
-
     if hidden_count > 0 {
         println!(
-            "\nShowing {} agents ({} primary, {} subagents, {} hidden - use --all to show all)",
+            "\nShowing {} of {} agents ({} primary, {} subagents total, {} hidden - use --all to show all)",
             filtered.len(),
+            matching_agents.len(),
             primary_count,
             subagent_count,
             hidden_count
