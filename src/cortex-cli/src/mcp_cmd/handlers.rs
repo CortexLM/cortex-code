@@ -239,6 +239,20 @@ pub(crate) async fn run_get(args: GetArgs) -> Result<()> {
     Ok(())
 }
 
+fn existing_mcp_server_message(name: &str, allow_force: bool) -> String {
+    if allow_force {
+        format!(
+            "MCP server '{name}' already exists. Use --force to overwrite, \
+             'cortex mcp remove {name}' first, or choose a different name."
+        )
+    } else {
+        format!(
+            "MCP server '{name}' already exists. Use 'cortex mcp remove {name}' first, \
+             or choose a different name."
+        )
+    }
+}
+
 /// Run the add command.
 pub(crate) async fn run_add(args: AddArgs) -> Result<()> {
     let AddArgs {
@@ -253,11 +267,7 @@ pub(crate) async fn run_add(args: AddArgs) -> Result<()> {
     // Check if server already exists
     let server_exists = get_mcp_server(&name)?.is_some();
     if server_exists && !force {
-        bail!(
-            "MCP server '{}' already exists. Use --force to overwrite, or 'cortex mcp remove {}' first.",
-            name,
-            name
-        );
+        bail!(existing_mcp_server_message(&name, true));
     }
 
     // Check for conflicting transport types
@@ -723,10 +733,7 @@ pub(crate) async fn run_rename(args: RenameArgs) -> Result<()> {
 
     // Check if new name already exists
     if get_mcp_server(&args.new_name)?.is_some() {
-        bail!(
-            "MCP server '{}' already exists. Remove it first or choose a different name.",
-            args.new_name
-        );
+        bail!(existing_mcp_server_message(&args.new_name, false));
     }
 
     let cortex_home =
@@ -901,6 +908,19 @@ mod tests {
             new_name: "same".to_string(),
         };
         assert_eq!(args.old_name, args.new_name);
+    }
+
+    #[test]
+    fn test_existing_server_advice_is_consistent() {
+        let add_message = existing_mcp_server_message("existing", true);
+        let rename_message = existing_mcp_server_message("existing", false);
+
+        assert!(add_message.contains("Use --force to overwrite"));
+        assert!(add_message.contains("'cortex mcp remove existing' first"));
+        assert!(add_message.contains("choose a different name"));
+        assert!(rename_message.contains("'cortex mcp remove existing' first"));
+        assert!(rename_message.contains("choose a different name"));
+        assert!(!rename_message.contains("--force"));
     }
 
     // ========================================================================
