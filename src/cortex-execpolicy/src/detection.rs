@@ -17,7 +17,23 @@ impl<'a> DetectionHelper<'a> {
 
     /// Normalize a path for comparison.
     pub fn normalize_path(path: &str) -> String {
-        let mut normalized = path.replace("//", "/");
+        let mut normalized = String::with_capacity(path.len());
+        let mut previous_was_slash = false;
+
+        for ch in path.chars() {
+            let ch = if ch == '\\' { '/' } else { ch };
+
+            if ch == '/' {
+                if previous_was_slash {
+                    continue;
+                }
+                previous_was_slash = true;
+            } else {
+                previous_was_slash = false;
+            }
+
+            normalized.push(ch);
+        }
 
         // Handle trailing slashes
         while normalized.len() > 1 && normalized.ends_with('/') {
@@ -28,9 +44,6 @@ impl<'a> DetectionHelper<'a> {
         if normalized.starts_with('~') {
             normalized = normalized.replacen('~', "/home", 1);
         }
-
-        // Handle Windows paths
-        normalized = normalized.replace('\\', "/");
 
         normalized
     }
@@ -992,5 +1005,35 @@ impl<'a> DetectionHelper<'a> {
                 return;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_path_collapses_repeated_slashes() {
+        assert_eq!(
+            DetectionHelper::normalize_path("///etc/shadow"),
+            "/etc/shadow"
+        );
+        assert_eq!(
+            DetectionHelper::normalize_path("////etc//shadow///"),
+            "/etc/shadow"
+        );
+        assert_eq!(
+            DetectionHelper::normalize_path("C:\\\\Windows\\System32"),
+            "C:/Windows/System32"
+        );
+    }
+
+    #[test]
+    fn sensitive_path_detects_repeated_leading_slashes() {
+        let config = PolicyConfig::default();
+        let helper = DetectionHelper::new(&config);
+
+        assert!(helper.is_sensitive_path("///etc/shadow"));
+        assert!(helper.is_sensitive_path("////etc//shadow"));
     }
 }
