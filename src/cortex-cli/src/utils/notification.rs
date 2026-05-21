@@ -31,6 +31,9 @@ pub enum NotificationUrgency {
 /// # Returns
 /// `Ok(())` on success (or silent failure if notifications unavailable).
 pub fn send_notification(title: &str, body: &str, urgency: NotificationUrgency) -> Result<()> {
+    #[cfg(not(target_os = "linux"))]
+    let _ = urgency;
+
     #[cfg(target_os = "macos")]
     {
         send_notification_macos(title, body)?;
