@@ -388,10 +388,8 @@ async fn handle_issue_comment(
         return Ok(());
     }
 
-    // Check if comment mentions cortex or starts with /cortex
-    let is_cortex_mention = comment.body.contains("@cortex")
-        || comment.body.starts_with("/cortex")
-        || comment.body.to_lowercase().contains("cortex help");
+    // Check if comment mentions cortex or starts with /cortex.
+    let is_cortex_mention = contains_cortex_trigger(&comment.body);
 
     if !is_cortex_mention {
         println!("   Skipping: no Cortex mention detected");
@@ -523,12 +521,12 @@ async fn handle_issue(
     let client = GitHubClient::new(token, repository)?;
 
     // Check if issue mentions cortex
-    let is_cortex_related = issue.title.to_lowercase().contains("Cortex")
-        || issue.body.to_lowercase().contains("Cortex")
+    let is_cortex_related = issue.title.to_lowercase().contains("cortex")
+        || issue.body.to_lowercase().contains("cortex")
         || issue
             .labels
             .iter()
-            .any(|l| l.to_lowercase().contains("Cortex"));
+            .any(|l| l.to_lowercase().contains("cortex"));
 
     if is_cortex_related {
         let greeting = format!(
@@ -546,21 +544,41 @@ async fn handle_issue(
 
 /// Parse a cortex command from comment text.
 fn parse_cortex_command(text: &str) -> String {
-    // Look for /cortex <command> pattern
-    if let Some(pos) = text.find("/cortex") {
-        let after_cortex = &text[pos + 7..];
-        let command = after_cortex.split_whitespace().next().unwrap_or("help");
-        return command.to_string();
+    find_cortex_command_start(text)
+        .map(|pos| {
+            let after_cortex = &text[pos + 7..];
+            after_cortex
+                .split_whitespace()
+                .next()
+                .unwrap_or("help")
+                .to_ascii_lowercase()
+        })
+        .unwrap_or_else(|| "help".to_string())
+}
+
+fn contains_cortex_trigger(text: &str) -> bool {
+    find_cortex_command_start(text).is_some() || text.to_ascii_lowercase().contains("cortex help")
+}
+
+fn find_cortex_command_start(text: &str) -> Option<usize> {
+    let lower = text.to_ascii_lowercase();
+
+    if lower.starts_with("/cortex") {
+        return Some(0);
     }
 
-    // Look for @cortex <command> pattern
-    if let Some(pos) = text.find("@cortex") {
-        let after_cortex = &text[pos + 7..];
-        let command = after_cortex.split_whitespace().next().unwrap_or("help");
-        return command.to_string();
+    if let Some(pos) = lower.find("@cortex") {
+        return Some(pos);
     }
 
-    "help".to_string()
+    if let Some(pos) = lower.find("/cortex") {
+        let before = &lower[..pos];
+        if before.ends_with(char::is_whitespace) {
+            return Some(pos);
+        }
+    }
+
+    None
 }
 
 /// Get help message for Cortex commands.
@@ -837,7 +855,19 @@ mod tests {
         assert_eq!(parse_cortex_command("/cortex review"), "review");
         assert_eq!(parse_cortex_command("@cortex fix"), "fix");
         assert_eq!(parse_cortex_command("Please @cortex help me"), "help");
+        assert_eq!(parse_cortex_command("/Cortex REVIEW"), "review");
+        assert_eq!(parse_cortex_command("Please @Cortex Fix this"), "fix");
         assert_eq!(parse_cortex_command("No command here"), "help");
+    }
+
+    #[test]
+    fn test_contains_cortex_trigger_case_insensitive() {
+        assert!(contains_cortex_trigger("@Cortex review"));
+        assert!(contains_cortex_trigger("/Cortex help"));
+        assert!(contains_cortex_trigger("please /Cortex fix"));
+        assert!(contains_cortex_trigger("Cortex Help"));
+        assert!(!contains_cortex_trigger("cortexium help"));
+        assert!(!contains_cortex_trigger("No command here"));
     }
 
     #[test]
