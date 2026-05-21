@@ -131,7 +131,8 @@ pub fn get_editor() -> Result<String, EditorError> {
         }
     }
 
-    // Fallback
+    // Fallback for Linux and other Unix-like targets.
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     Ok("vi".to_string())
 }
 
