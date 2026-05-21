@@ -189,7 +189,8 @@ pub struct InteractiveArgs {
 
     /// Tell the agent to use the specified directory as its working root
     #[arg(
-        long = "cd",
+        long = "cwd",
+        alias = "cd",
         short = 'C',
         value_name = "DIR",
         help_heading = "Workspace"
@@ -1107,8 +1108,26 @@ mod tests {
     #[test]
     fn test_cli_cwd_long() {
         let cli =
+            Cli::try_parse_from(["cortex", "--cwd", "/tmp/project"]).expect("should parse --cwd");
+        assert_eq!(cli.interactive.cwd, Some(PathBuf::from("/tmp/project")));
+    }
+
+    #[test]
+    fn test_cli_cwd_cd_alias() {
+        let cli =
             Cli::try_parse_from(["cortex", "--cd", "/tmp/project"]).expect("should parse --cd");
         assert_eq!(cli.interactive.cwd, Some(PathBuf::from("/tmp/project")));
+    }
+
+    #[test]
+    fn test_cli_cwd_help_uses_canonical_name() {
+        use clap::CommandFactory;
+
+        let mut cmd = Cli::command();
+        let help = cmd.render_long_help().to_string();
+
+        assert!(help.contains("--cwd <DIR>"));
+        assert!(!help.contains("--cd <DIR>"));
     }
 
     #[test]

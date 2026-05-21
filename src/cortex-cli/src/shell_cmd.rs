@@ -20,7 +20,7 @@ pub struct ShellCli {
     pub model: Option<String>,
 
     /// Working directory override
-    #[arg(long = "cwd", short = 'C')]
+    #[arg(long = "cwd", alias = "cd", short = 'C')]
     pub cwd: Option<PathBuf>,
 
     /// Configuration profile from config.toml
@@ -185,6 +185,17 @@ mod tests {
             cli.cwd,
             Some(PathBuf::from("/home/user/workspace")),
             "CWD should be set via --cwd flag"
+        );
+    }
+
+    #[test]
+    fn test_shell_cli_cwd_cd_alias() {
+        let cli = ShellCli::parse_from(["shell", "--cd", "/home/user/workspace"]);
+
+        assert_eq!(
+            cli.cwd,
+            Some(PathBuf::from("/home/user/workspace")),
+            "CWD should be set via --cd alias"
         );
     }
 

@@ -14,7 +14,7 @@ use std::path::PathBuf;
 #[command(about = "Start an ACP (Agent Client Protocol) server for IDE integration")]
 pub struct AcpCli {
     /// Working directory for the session.
-    #[arg(long = "cwd", short = 'C', value_name = "DIR")]
+    #[arg(long = "cwd", alias = "cd", short = 'C', value_name = "DIR")]
     pub cwd: Option<PathBuf>,
 
     /// Port to listen on (default: random available port).
@@ -157,6 +157,14 @@ mod tests {
     fn test_acp_cli_cwd_long_option() {
         let cli =
             AcpCli::try_parse_from(["acp", "--cwd", "/home/user/project"]).expect("should parse");
+
+        assert_eq!(cli.cwd, Some(PathBuf::from("/home/user/project")));
+    }
+
+    #[test]
+    fn test_acp_cli_cwd_cd_alias() {
+        let cli = AcpCli::try_parse_from(["acp", "--cd", "/home/user/project"])
+            .expect("should parse --cd alias");
 
         assert_eq!(cli.cwd, Some(PathBuf::from("/home/user/project")));
     }
