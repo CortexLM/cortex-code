@@ -410,21 +410,7 @@ async fn handle_issue_comment(
     client.add_reaction(comment.comment_id, "eyes").await?;
 
     // Process the command
-    let response = match command.as_str() {
-        "help" => get_help_message(),
-        "review" => {
-            if comment.is_pull_request {
-                "Starting code review... (not yet implemented)".to_string()
-            } else {
-                "This command is only available on pull requests.".to_string()
-            }
-        }
-        "fix" => "Analyzing and suggesting fixes... (not yet implemented)".to_string(),
-        _ => format!(
-            "Unknown command: `{}`\n\nUse `/cortex help` to see available commands.",
-            command
-        ),
-    };
+    let response = build_cortex_command_response(&command, comment.is_pull_request);
 
     // Post response comment
     client
@@ -437,6 +423,26 @@ async fn handle_issue_comment(
     println!("   Response posted");
 
     Ok(())
+}
+
+fn build_cortex_command_response(command: &str, is_pull_request: bool) -> String {
+    match command {
+        "help" => get_help_message(),
+        "review" => {
+            if is_pull_request {
+                "Starting code review... (not yet implemented)".to_string()
+            } else {
+                "This command is only available on pull requests.".to_string()
+            }
+        }
+        "fix" => "Analyzing and suggesting fixes... (not yet implemented)".to_string(),
+        "explain" => "Explaining code changes... (not yet implemented)".to_string(),
+        "test" => "Suggesting tests for changes... (not yet implemented)".to_string(),
+        _ => format!(
+            "Unknown command: `{}`\n\nUse `/cortex help` to see available commands.",
+            command
+        ),
+    }
 }
 
 /// Handle pull request events.
@@ -845,6 +851,21 @@ mod tests {
         let help = get_help_message();
         assert!(help.contains("/cortex help"));
         assert!(help.contains("/cortex review"));
+        assert!(help.contains("/cortex explain"));
+        assert!(help.contains("/cortex test"));
+    }
+
+    #[test]
+    fn test_advertised_commands_have_responses() {
+        for command in ["explain", "test"] {
+            let response = build_cortex_command_response(command, true);
+
+            assert!(
+                !response.contains("Unknown command"),
+                "{command} should not return unknown-command help"
+            );
+            assert!(response.contains("not yet implemented"));
+        }
     }
 
     #[tokio::test]
