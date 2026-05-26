@@ -3,7 +3,7 @@
 //! Complete unified diff parser and applier with context matching.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -226,6 +226,18 @@ fn parse_file_path(path_str: &str) -> Option<PathBuf> {
     }
 }
 
+fn resolve_patch_path(cwd: &Path, path: &Path) -> std::result::Result<PathBuf, String> {
+    if path.is_absolute() {
+        return Err(format!(
+            "Absolute patch paths are not allowed: {}",
+            path.display()
+        ));
+    }
+
+    crate::security::path_safety::resolve_and_validate_path(path, cwd, cwd)
+        .map_err(|e| format!("Patch path escapes workspace: {e}"))
+}
+
 /// Parse a hunk header like "@@ -1,5 +1,6 @@".
 fn parse_hunk_header(line: &str) -> Option<Hunk> {
     let line = line.trim_start_matches('@').trim_end_matches('@').trim();
@@ -265,7 +277,7 @@ fn apply_file_change(
     if change.is_deleted
         && let Some(ref old_path) = change.old_path
     {
-        let full_path = cwd.join(old_path);
+        let full_path = resolve_patch_path(cwd, old_path)?;
         if !dry_run {
             fs::remove_file(&full_path)
                 .map_err(|e| format!("Failed to delete {}: {}", full_path.display(), e))?;
@@ -280,7 +292,7 @@ fn apply_file_change(
         .or(change.old_path.as_ref())
         .ok_or_else(|| "No file path specified".to_string())?;
 
-    let full_path = cwd.join(target_path);
+    let full_path = resolve_patch_path(cwd, target_path)?;
 
     // Handle new file
     if change.is_new_file {
@@ -507,5 +519,24 @@ mod tests {
 "#;
         let changes = parse_unified_diff(patch).unwrap();
         assert!(changes[0].is_new_file);
+    }
+
+    #[test]
+    fn test_apply_patch_rejects_absolute_new_file_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let absolute_path = temp_dir.path().join("escaped.txt");
+        let patch = format!(
+            "--- /dev/null\n+++ {}\n@@ -0,0 +1 @@\n+owned\n",
+            absolute_path.display()
+        );
+
+        let result = apply_unified_diff(&patch, &temp_dir.path().to_path_buf(), false);
+
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Absolute patch paths are not allowed")
+        );
+        assert!(!absolute_path.exists());
     }
 }

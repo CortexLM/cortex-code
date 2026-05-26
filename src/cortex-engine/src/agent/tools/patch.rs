@@ -124,7 +124,7 @@ impl PatchTool {
         if change.is_deleted
             && let Some(ref old_path) = change.old_path
         {
-            let full_path = cwd.join(old_path);
+            let full_path = resolve_patch_path(cwd, old_path)?;
             if !dry_run {
                 if full_path.exists() {
                     fs::remove_file(&full_path)
@@ -142,7 +142,7 @@ impl PatchTool {
             .or(change.old_path.as_ref())
             .ok_or_else(|| "No file path specified in diff".to_string())?;
 
-        let full_path = cwd.join(target_path);
+        let full_path = resolve_patch_path(cwd, target_path)?;
 
         // Handle new file
         if change.is_new_file {
@@ -332,6 +332,18 @@ fn parse_diff_path(path_str: &str) -> Option<PathBuf> {
     }
 }
 
+fn resolve_patch_path(cwd: &Path, path: &Path) -> std::result::Result<PathBuf, String> {
+    if path.is_absolute() {
+        return Err(format!(
+            "Absolute patch paths are not allowed: {}",
+            path.display()
+        ));
+    }
+
+    crate::security::path_safety::resolve_and_validate_path(path, cwd, cwd)
+        .map_err(|e| format!("Patch path escapes workspace: {e}"))
+}
+
 fn parse_hunk_header(line: &str) -> Option<Hunk> {
     // @@ -1,5 +1,6 @@
     let line = line.trim_start_matches("@@").trim_end_matches("@@").trim();
@@ -478,4 +490,30 @@ fn matches_at_position(lines: &[String], match_lines: &[&str], start: usize) -> 
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn apply_patch_rejects_absolute_new_file_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let absolute_path = temp_dir.path().join("escaped.txt");
+        let patch = format!(
+            "--- /dev/null\n+++ {}\n@@ -0,0 +1 @@\n+owned\n",
+            absolute_path.display()
+        );
+
+        let result = PatchTool::new()
+            .apply_patch(&patch, temp_dir.path(), false)
+            .await;
+
+        assert!(
+            result
+                .unwrap_err()
+                .contains("Absolute patch paths are not allowed")
+        );
+        assert!(!absolute_path.exists());
+    }
 }
