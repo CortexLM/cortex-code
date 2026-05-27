@@ -20,7 +20,7 @@ pub fn mime_type_from_extension(path: &Path) -> String {
         "xml" => "text/xml",
 
         // Code files
-        "js" | "mjs" | "cjs" => "text/javascript",
+        "js" | "jsx" | "mjs" | "cjs" => "text/javascript",
         "ts" | "tsx" => "text/typescript",
         "json" => "application/json",
         "rs" => "text/x-rust",
@@ -74,6 +74,10 @@ mod tests {
         assert_eq!(
             mime_type_from_extension(&PathBuf::from("test.json")),
             "application/json"
+        );
+        assert_eq!(
+            mime_type_from_extension(&PathBuf::from("test.jsx")),
+            "text/javascript"
         );
         assert_eq!(
             mime_type_from_extension(&PathBuf::from("test.png")),
