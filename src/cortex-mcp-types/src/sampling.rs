@@ -75,13 +75,15 @@ pub struct ModelHint {
 
 /// Include context option.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
 pub enum IncludeContext {
     /// No context.
+    #[serde(rename = "none")]
     None,
     /// This server's context.
+    #[serde(rename = "thisServer")]
     ThisServer,
     /// All servers' context.
+    #[serde(rename = "allServers")]
     AllServers,
 }
 
@@ -110,4 +112,34 @@ pub enum StopReason {
     StopSequence,
     /// Max tokens reached.
     MaxTokens,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn include_context_uses_mcp_camel_case_values() {
+        assert_eq!(
+            serde_json::to_string(&IncludeContext::None).unwrap(),
+            "\"none\""
+        );
+        assert_eq!(
+            serde_json::to_string(&IncludeContext::ThisServer).unwrap(),
+            "\"thisServer\""
+        );
+        assert_eq!(
+            serde_json::to_string(&IncludeContext::AllServers).unwrap(),
+            "\"allServers\""
+        );
+
+        assert_eq!(
+            serde_json::from_str::<IncludeContext>("\"thisServer\"").unwrap(),
+            IncludeContext::ThisServer
+        );
+        assert_eq!(
+            serde_json::from_str::<IncludeContext>("\"allServers\"").unwrap(),
+            IncludeContext::AllServers
+        );
+    }
 }
