@@ -22,7 +22,7 @@ pub fn mime_type_from_extension(path: &Path) -> String {
         // Code files
         "js" | "mjs" | "cjs" => "text/javascript",
         "ts" | "tsx" => "text/typescript",
-        "json" => "application/json",
+        "json" | "jsonc" | "json5" => "application/json",
         "rs" => "text/x-rust",
         "py" => "text/x-python",
         "rb" => "text/x-ruby",
@@ -73,6 +73,14 @@ mod tests {
         );
         assert_eq!(
             mime_type_from_extension(&PathBuf::from("test.json")),
+            "application/json"
+        );
+        assert_eq!(
+            mime_type_from_extension(&PathBuf::from("test.jsonc")),
+            "application/json"
+        );
+        assert_eq!(
+            mime_type_from_extension(&PathBuf::from("test.json5")),
             "application/json"
         );
         assert_eq!(
