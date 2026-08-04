@@ -254,3 +254,9 @@ The plugin can be tested by:
 ## License
 
 MIT License - See LICENSE file for details.
+## Navigation
+
+- [Back to `examples/plugins`](../../README.md)
+- [Back to `cortex`](../../../README.md)
+- [Back to `REPOS`](../../../../README.md)
+- [Back to `AI_REVENUE_SPRINT_100_24H`](../../../../../README.md)

@@ -119,3 +119,8 @@ We welcome contributions from the community! See our [Contributing Guide](./docs
 ## License
 
 Copyright © 2025 Cortex Foundation. All rights reserved.
+
+## Navigation
+
+- [Back to `REPOS`](../README.md)
+- [Back to `AI_REVENUE_SPRINT_100_24H`](../../README.md)
