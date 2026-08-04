@@ -39,8 +39,8 @@ pub struct ExportCommand {
     #[arg(short, long, value_enum, default_value_t = ExportFormat::Json)]
     pub format: ExportFormat,
 
-    /// Pretty-print the output (for json/yaml)
-    #[arg(long, default_value_t = true)]
+    /// Pretty-print JSON output
+    #[arg(long, action = clap::ArgAction::SetTrue)]
     pub pretty: bool,
 }
 
@@ -111,6 +111,8 @@ pub struct ExportToolCall {
 impl ExportCommand {
     /// Run the export command.
     pub async fn run(self) -> Result<()> {
+        validate_format_options(self.format, self.pretty)?;
+
         let cortex_home = dirs::home_dir()
             .map(|h| h.join(".cortex"))
             .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
@@ -239,6 +241,14 @@ impl ExportCommand {
 
         Ok(())
     }
+}
+
+fn validate_format_options(format: ExportFormat, pretty: bool) -> Result<()> {
+    if pretty && format != ExportFormat::Json {
+        bail!("--pretty is only supported for JSON exports");
+    }
+
+    Ok(())
 }
 
 /// Escape a field for CSV output.
@@ -465,5 +475,31 @@ mod tests {
         let refs = extract_agent_refs(&messages);
         assert_eq!(refs.len(), 1);
         assert!(refs.contains(&"explore".to_string()));
+    }
+
+    #[test]
+    fn test_pretty_defaults_to_false() {
+        let cmd = ExportCommand::try_parse_from(["export", "session-id"]).unwrap();
+
+        assert!(!cmd.pretty);
+    }
+
+    #[test]
+    fn test_validate_format_options_allows_pretty_json() {
+        validate_format_options(ExportFormat::Json, true).unwrap();
+    }
+
+    #[test]
+    fn test_validate_format_options_rejects_pretty_yaml() {
+        let err = validate_format_options(ExportFormat::Yaml, true).unwrap_err();
+
+        assert!(err.to_string().contains("JSON exports"));
+    }
+
+    #[test]
+    fn test_validate_format_options_rejects_pretty_csv() {
+        let err = validate_format_options(ExportFormat::Csv, true).unwrap_err();
+
+        assert!(err.to_string().contains("JSON exports"));
     }
 }

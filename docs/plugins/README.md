@@ -402,3 +402,8 @@ granted_permissions = ["read_files", "network"]
 api_key = "your-api-key"
 max_items = 20
 ```
+## Navigation
+
+- [Back to `cortex`](../../README.md)
+- [Back to `REPOS`](../../../README.md)
+- [Back to `AI_REVENUE_SPRINT_100_24H`](../../../../README.md)
