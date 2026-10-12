@@ -369,15 +369,21 @@ impl SkillManager {
                         }
                     }
                     WatchEvent::Deleted(path) => {
-                        // Remove skill if its SKILL.toml was deleted
+                        // Remove the skill whose source directory was deleted.
+                        // Skills are keyed by their id (derived from the
+                        // SKILL.toml `name`), which need not match the directory
+                        // name, so match on `source_path` rather than the dir name.
                         if let Some(skill_dir) = path.parent() {
-                            let skill_id = skill_dir
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("")
-                                .to_lowercase();
-                            if skills.remove(&skill_id).is_some() {
-                                info!("Hot-removed skill: {}", skill_id);
+                            let mut removed: Vec<String> = Vec::new();
+                            skills.retain(|id, skill| {
+                                let keep = skill.source_path.as_path() != skill_dir;
+                                if !keep {
+                                    removed.push(id.clone());
+                                }
+                                keep
+                            });
+                            for id in removed {
+                                info!("Hot-removed skill: {}", id);
                             }
                         }
                     }
