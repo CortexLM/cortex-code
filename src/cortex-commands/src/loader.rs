@@ -41,17 +41,19 @@ impl CommandLoader {
     /// Create a new loader with default search paths.
     ///
     /// Default paths:
-    /// 1. `.cortex/command/` (project-local)
-    /// 2. `~/.config/cortex/command/` (global)
+    /// 1. `.cortex/commands/` (project-local)
+    /// 2. `<config_dir>/cortex/commands/` (global), where `<config_dir>` is
+    ///    [`dirs::config_dir`]: `~/.config` on Linux (or `$XDG_CONFIG_HOME`),
+    ///    `~/Library/Application Support` on macOS, `%APPDATA%` on Windows.
     pub fn new() -> Self {
         let mut search_dirs = Vec::new();
 
         // Project-local commands
-        search_dirs.push(PathBuf::from(".cortex/command"));
+        search_dirs.push(PathBuf::from(".cortex/commands"));
 
         // Global commands
         if let Some(config_dir) = dirs::config_dir() {
-            search_dirs.push(config_dir.join("Cortex").join("command"));
+            search_dirs.push(config_dir.join("cortex").join("commands"));
         }
 
         Self { search_dirs }
@@ -245,11 +247,11 @@ pub mod sync {
         let mut dirs = Vec::new();
 
         // Project-local
-        dirs.push(PathBuf::from(".cortex/command"));
+        dirs.push(PathBuf::from(".cortex/commands"));
 
         // Global
         if let Some(config_dir) = dirs::config_dir() {
-            dirs.push(config_dir.join("Cortex").join("command"));
+            dirs.push(config_dir.join("cortex").join("commands"));
         }
 
         dirs
