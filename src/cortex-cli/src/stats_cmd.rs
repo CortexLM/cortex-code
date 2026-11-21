@@ -216,6 +216,16 @@ fn get_model_pricing(model: &str) -> ModelPricing {
         }
     }
 
+    // Dated, source-cited list prices for known model ids.
+    if let Some(p) = llm_prices::lookup(model) {
+        if let (Some(input), Some(output)) = (p.input, p.output) {
+            return ModelPricing {
+                input_per_million: input,
+                output_per_million: output,
+            };
+        }
+    }
+
     // Fall back to default pricing (may be outdated - users can override via CORTEX_PRICING_*)
     // Pricing per 1M tokens (as of late 2024/early 2025 - may change)
     match model {
@@ -722,6 +732,16 @@ mod tests {
         assert_eq!(infer_provider("gpt-4o"), "openai");
         assert_eq!(infer_provider("gemini-2.0-flash"), "google");
         assert_eq!(infer_provider("deepseek-chat"), "deepseek");
+    }
+
+    #[test]
+    fn test_current_model_list_prices() {
+        // Opus 4.5 is $5/$25, not the Opus 4 rate of $15/$75.
+        let cost = calculate_cost("claude-opus-4-5", 1_000_000, 1_000_000);
+        assert!((cost - 30.0).abs() < 0.001);
+        // o3 is $2/$8.
+        let cost = calculate_cost("o3", 1_000_000, 1_000_000);
+        assert!((cost - 10.0).abs() < 0.001);
     }
 
     #[test]

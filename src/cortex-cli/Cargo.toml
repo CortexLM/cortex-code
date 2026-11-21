@@ -59,6 +59,7 @@ uuid = { workspace = true }
 toml = { workspace = true }
 toml_edit = { workspace = true }
 serde_yaml = "0.9"
+llm-prices = "1.8.0"
 serde = { workspace = true }
 ctor = "0.5"
 base64 = { workspace = true }
